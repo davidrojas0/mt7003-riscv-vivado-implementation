@@ -1,2 +1,32 @@
-# mt7003-riscv-vivado-implementation
-Hardware design of a basic RISC-V processor (integer instruction set) built from scratch in Verilog. This repository includes the control unit, ALU, and memory modules required to compile and run specific C programs, simulated via Vivado as a project evaluation for the Microprocessors and Microcontrollers course at Tecnológico de Costa Rica.
+# Microarquitectura RISC-V RV32I (Multiciclo)
+
+**Curso:** MT-7003 Microprocesadores y Microcontroladores  
+**Tecnológico de Costa Rica** | Escuela de Ingeniería Mecatrónica  
+**Grupo N° 3** | II Semestre 2026  
+
+## Descripción del Proyecto
+Implementación de una microarquitectura multiciclo en Verilog para el set reducido de instrucciones de enteros de la arquitectura de código abierto RISC-V (RV32I), validada en el entorno de simulación Vivado de Xilinx.
+
+---
+
+## Especificaciones del Procesador y Set de Instrucciones
+
+| Tipo / Formato | Mnemónico | Opcode [6:0] | funct3 | funct7 | Función en Código C |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Tipo I** | `addi` | `0010011` (`0x13`) | `000` | N/A | Gestión de pila (`sp`, `s0`), `i++`, `li` |
+| **Tipo I** | `lw` | `0000011` (`0x03`) | `010` | N/A | Carga de palabra (32 bits) desde RAM |
+| **Tipo I** | `slli` | `0010011` (`0x13`) | `001` | `0000000` | Desplazamiento a la izquierda (`b = b << 1`) |
+| **Tipo I** | `andi` | `0010011` (`0x13`) | `111` | N/A | Máscara de bits AND (`b = b & 0xF`) |
+| **Tipo S** | `sw` | `0100011` (`0x23`) | `010` | N/A | Escritura de palabra (32 bits) en RAM |
+| **Tipo S** | `sb` | `0100011` (`0x23`) | `000` | N/A | Escritura de byte (`char a = 'c'`) |
+| **Tipo U** | `lui` | `0110111` (`0x37`) | N/A | N/A | Carga del byte alto (`0xC7DF`) |
+| **Tipo B** | `bne` | `1100011` (`0x63`) | `001` | N/A | Salto condicional `if (i == 0)` |
+| **Tipo B** | `bge` | `1100011` (`0x63`) | `101` | N/A | Evaluación del bucle `for` |
+| **Tipo J** | `jal` | `1101111` (`0x6F`) | N/A | N/A | Salto incondicional |
+
+---
+
+## Documentación y Bitácora
+- [Bitácora de Desarrollo](./bitacora/)
+- [Diagramas de Arquitectura](./docs/)
+- [Enunciado del Proyecto](./docs/Proyecto_Microprocesador_II_SEM_2026.pdf)

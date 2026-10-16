@@ -1,4 +1,4 @@
-# Microarquitectura RISC-V RV32I (Multiciclo)
+# Microarquitectura RV32I (Multiciclo)
 
 **Curso:** MT-7003 Microprocesadores y Microcontroladores  
 **Tecnológico de Costa Rica** | Escuela de Ingeniería Mecatrónica  
@@ -10,6 +10,17 @@ Implementación de una microarquitectura multiciclo en Verilog para el set reduc
 ---
 
 ## Especificaciones del Procesador y Set de Instrucciones
+
+### Análisis y Clasificación de Instrucciones RV32I
+A partir del proceso de cross-compilación y desensamblado del código en C suministrado, `pm_ev_grupos_6_estudiantes.c`, se determinó un subconjunto mínimo de 10 instrucciones pertenecientes al ISA RV32I base, repartidas en 31 palabras de instrucción de 32 bits.
+
+Como se detalla en la tabla a continuación, el subconjunto se clasifica en 5 formatos principales de codificación:
+
+* **Tipo I (Inmediato/Cargas):** Es el grupo más utilizado, encargado del manejo de constantes, desplazamientos (`slli`), operaciones lógicas (`andi`), aritmética de la pila (`addi`) y lectura de memoria (`lw`).
+* **Tipo S (Almacenamiento):** Soportado mediante `sw` para enteros de 32 bits y `sb` para caracteres de 8 bits.
+* **Tipo U (Inmediato Superior):** Requerido por `lui` para formar direcciones de memoria de 32 bits.
+* **Tipo B (Saltos Condicionales):** Requerido por `bne` y `bge` para el control de flujo en estructuras `if-else` y bucles `for`.
+* **Tipo J (Saltos Incondicionales):** Requerido por `jal` para saltos directos de bifurcación.
 
 | Tipo / Formato | Mnemónico | Opcode [6:0] | funct3 | funct7 | Función en Código C |
 | :--- | :--- | :--- | :--- | :--- | :--- |

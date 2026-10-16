@@ -41,3 +41,22 @@ Como se detalla en la tabla a continuación, el subconjunto se clasifica en 5 fo
 - [Bitácora de Desarrollo](./bitacora/)
 - [Diagramas de Arquitectura](./docs/)
 - [Enunciado del Proyecto](./docs/Proyecto_Microprocesador_II_SEM_2026.pdf)
+
+---
+
+## Convenciones de Commits
+
+Para mantener la trazabilidad y organización del proyecto, los commits del repositorio siguen el estándar de **Conventional Commits**:
+
+```text
+[tipo](módulo): Descripción breve del cambio en minúsculas
+
+```
+
+#### Tipos de Commit Utilizados:
+
+* **`docs:`** Cambios en la documentación, bitácora (`/bitacora`), especificaciones o diagrama en el `README.md`.
+* **`feat:`** Adición de nuevos módulos en Verilog (`/hdl`), testbenches (`/sim`) o scripts auxiliares.
+* **`fix:`** Correcciones de errores sintácticos, de lógica o de señales en Verilog/simulación.
+* **`refactor:`** Cambios en la arquitectura de hardware sin alterar la especificación funcional.
+* **`chore:`** Tareas secundarias o mantenimiento del repositorio (limpieza de archivos, configuración).

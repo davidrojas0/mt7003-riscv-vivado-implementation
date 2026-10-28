@@ -97,7 +97,7 @@ El programa completo ejecuta 42 instrucciones en **172 ciclos**; el procesador s
 
 ## 4. Diferencias con el diagrama `circuito_multiciclo_v2.png`
 
-Hay que reflejarlas en el diagrama y en la bitácora.
+Estos cambios ya están dibujados en `docs/circuito_multiciclo_v3.png`.
 
 | Cambio | Motivo |
 |:--|:--|
@@ -105,6 +105,7 @@ Hay que reflejarlas en el diagrama y en la bitácora.
 | Señal **BranchInv** hacia PC Write Logic | `bne` (salta con Zero=0) y `bge` (salta con SLT=0) necesitan polaridades distintas. |
 | `jal` en **dos estados** | El mux Result alimenta tanto al PC como al banco de registros; no se pueden escribir PC y rd con valores distintos en el mismo ciclo. |
 | Estado **HALT** y salida `halted` | Detener el procesador al terminar el programa en vez de ejecutar basura. |
+| **Zero** llega solo al Control de Escritura PC | La FSM no usa Zero: la decisión de salto se toma en PC Write Logic. |
 | ResultSrc=10 (ALUResult directo) | Permite escribir el PC con PC+4 en FETCH sin pasar por ALUOut. |
 
 **A confirmar con el profesor:** que una memoria unificada (como en el diagrama v2) cumple el requisito "memoria de datos / memoria de instrucciones" (4 pts cada una).

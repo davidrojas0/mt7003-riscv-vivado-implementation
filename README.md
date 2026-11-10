@@ -5,7 +5,7 @@
 **Grupo N° 3** | II Semestre 2026  
 
 ## Descripción del Proyecto
-Implementación de una microarquitectura multiciclo en Verilog para el set reducido de instrucciones de enteros de la arquitectura de código abierto RISC-V (RV32I), validada en el entorno de simulación Vivado de Xilinx.
+Implementación de una microarquitectura multiciclo en Verilog para el set reducido de instrucciones de enteros de la arquitectura de código abierto RISC-V (RV32I), validada en el entorno de simulación Vivado de AMD.
 
 ---
 
@@ -38,6 +38,7 @@ Como se detalla en la tabla a continuación, el subconjunto se clasifica en 5 fo
 ---
 
 ## Especificaciones por modulo
+
 ### 1. Program Counter (`PC`)
 
 * **Módulo:** `pc`
@@ -66,13 +67,17 @@ Como se detalla en la tabla a continuación, el subconjunto se clasifica en 5 fo
 
 El bloque **Program Counter (PC)** opera como un registro de estado de 32 bits. Para la arquitectura multiciclo la señal `PCWrite` actúa como un filtro que controla estrictamente cuándo debe avanzar el puntero de instrucciones.
 
-La señal de habilitación `PCWrite` es generada por la caja **Control de Escritura PC** dentro de la Unidad de Control, respondiendo a la siguiente ecuación lógica:
+La señal de habilitación `PCWrite` es generada por la caja **Control de Escritura PC** (`pc_write_logic`), respondiendo formalmente a la siguiente ecuación booleana:
 
 $$\text{PCWrite} = \text{PCUpdate} \lor \text{BranchTaken}$$
 
+Donde la relación entre las señales de control y evaluación se divide en dos jerarquías conceptuales:
+* **`Branch` (Control):** Señal booleana de 1 bit generada por la FSM que indica de forma general que la instrucción en curso es un salto condicional (`bne` o `bge`).
+* **`BranchTaken` (Evaluación lógica):** Señal combinacional interna de la lógica de control que determina si el salto **efectivamente se cumple**, combinando la orden `Branch` con las banderas físicas emitidas por la ALU (`Zero` para evaluar desigualdad en `bne`, o `GE` para evaluar mayor o igual con signo en `bge`).
+
 * **Durante la fase de Búsqueda (*Fetch* - Ciclo 1):** La FSM activa la señal incondicional `PCUpdate = 1`, lo que provoca que `PCWrite = 1`. En el flanco de subida del reloj, el PC almacena la suma de $PC + 4$ calculada por la ALU y entregada por el Mux `ResultSrc`.
 * **Durante las fases intermedias (Ciclos 2 a 4):** Las señales `PCUpdate` y `Branch` se mantienen en `0`, forzando `PCWrite = 0`. Esto garantiza que la dirección del PC no varíe mientras la instrucción actual lee el Banco de Registros o accede a la Memoria de Datos.
-* **Durante la fase de Salto Condicional (Instrucciones Tipo B):** Si la condición de salto se evalúa como verdadera en la ALU (bandera `Zero = 1`) y la FSM indica que se trata de una instrucción de salto (`Branch = 1`), `PCWrite` se evalúa en `1`, permitiendo que la dirección objetivo calculada de salto se cargue en el PC.
+* **During la fase de Salto Condicional (Instrucciones Tipo B):** Si la FSM emite `Branch = 1` y la ALU confirma que se cumple la condición requerida (`Zero = 0` para `bne` o `GE = 1` para `bge`), la lógica evalúa $\text{BranchTaken} = 1$. Esto activa `PCWrite = 1`, permitiendo que la dirección objetivo calculada de salto se cargue en el PC.
 
 ---
 
@@ -116,7 +121,7 @@ Este módulo conmuta la dirección entregada a la Memoria Unificada. En el prime
 | --- | --- | --- | --- | --- |
 | `clk` | Entrada | 1 | Sistema | Señal de reloj principal. Las operaciones de escritura en la RAM se sincronizan en el flanco de subida (*posedge*). |
 | `Address` | Entrada | 32 | Mux `AdrSrc` | Dirección física a acceder. Corresponde a la dirección de instrucción (`PC`) en la etapa de *Fetch*, o a la dirección efectiva calculada por la ALU en la etapa de *Memory*. |
-| `WriteData` | Entrada | 32 | Registro `Write Data` | Dato de 32 bits entregado por el banco de registros para ser almacenado en la memoria. |
+| `WriteData` | Entrada | 32 | Registro `B` | Dato de 32 bits entregado por el banco de registros para ser almacenado en la memoria. |
 | `MemWrite` | Control | 1 | Unidad de Control (FSM) | Habilitador global de escritura (*Write Enable*). `1` activa la escritura en la RAM; `0` mantiene la memoria en modo lectura. |
 | `ByteWrite` | Control | 4 | Unidad de Control (Decodificador) | Señal de habilitación de byte. Controla cuáles bytes específicos de la palabra de 32 bits deben ser modificados. |
 | `ReadData` | Salida | 32 | Registros `Instrucciones` y `Datos` | Palabra de 32 bits leída en la dirección indicada por `Address`. La salida se conecta en paralelo a las entradas de los registros intermedios `Instrucciones` (IR) y `Datos` (MDR). |
@@ -126,9 +131,9 @@ Este módulo conmuta la dirección entregada a la Memoria Unificada. En el prime
 | `MemWrite` | `ByteWrite` | Tipo de Acceso | Etapa de Ejecución | Instrucciones que lo Utilizan | Descripción de Operación |
 | --- | --- | --- | --- | --- | --- |
 | **`0`** | `4'b0000` | **Lectura (Read)** | *Fetch* | **Todas** las instrucciones (Ciclo 1) | Lee la palabra de instrucción apuntada por el `PC` y la deposita en la entrada del registro `Instrucciones`. |
-| **`0`** | `4'b0000` | **Lectura (Read)** | *Memory Access* | `lw` | Lee la palabra de datos de 32 bits ubicada en la dirección calculada por la ALU y la deposita en el registro `Data`. |
+| **`0`** | `4'b0000` | **Lectura (Read)** | *Memory Access* | `lw` | Lee la palabra de datos de 32 bits ubicada en la dirección calculada por la ALU y la deposita en el registro `Datos`. |
 | **`1`** | `4'b1111` | **Escritura Word** | *Memory Access* | `sw` | Escribe los 32 bits del registro `Write Data` en la dirección de memoria apuntada por `ALUOut`. |
-| **`1`** | `4'b0001`* | **Escritura Byte** | *Memory Access* | `sb` | Escribe únicamente los 8 bits menos significativos del registro `Write Data` (`WriteData[7:0]`) en la dirección correspondiente, según los bits `Adr[1:0]`. |
+| **`1`** | `4'b0001`* | **Escritura Byte** | *Memory Access* | `sb` | Escribe únicamente los 8 bits menos significativos del registro `Write Data` (`WriteData[7:0]`) en la dirección correspondiente, según los bits `Address[1:0]`. |
 
 * *Nota: La señal de bytes `4'b0001`, `4'b0010`, `4'b0100` o `4'b1000` es conmutada dinámicamente por la Unidad de Control o la lógica de decodificación interna según la alineación indicada por los bits `Address[1:0]`.*
 
@@ -147,7 +152,7 @@ Cuando se ejecuta una instrucción de almacenamiento (`sw` o `sb`), la FSM activ
 
 ### 4. Banco de Registros (`Registers`)
 
-* **Módulo:** `register_file`
+* **Módulo:** `registers`
 * **Tipo:** Arreglo de registros de lectura combinacional de 2 puertos y escritura secuencial síncrona de 1 puerto, compuesto por 32 registros de 32 bits.
 * **Propósito:** Almacenar los 32 registros de propósito general de la arquitectura RV32I (`x0` a `x31`). Proporciona los operandos a la ruta de datos para la ejecución de instrucciones y almacena los resultados temporales o finales devueltos por la ALU o la memoria.
 
@@ -246,6 +251,8 @@ Para la instrucción `lui` (requerida al cargar constantes de direcciones superi
 | **`2'b00`** | `in_pc` | *Fetch* | **Todas** las instrucciones | Entrega el valor actual del $PC$ a la ALU para sumar +4 y calcular la dirección de la siguiente instrucción. |
 | **`2'b01`** | `in_old_pc` | *Decode* / *Execute* | Tipo B y Tipo J | Entrega la dirección base de la instrucción actual ($OldPC$) para calcular la dirección objetivo del salto ($OldPC + ImmExt$). |
 | **`2'b10`** | `in_reg_a` | *Execute* | Tipo I, Tipo S, Tipo B | Entrega el dato del registro fuente $rs1$ para ejecutar operaciones aritméticas/lógicas, direcciones de memoria o comparaciones de salto. |
+
+**Nota de Implementación en Verilog:* Para evitar la propagación de estados indeterminados (X) durante la simulación de instrucciones como lui (donde la ALU ignora el puerto A), el selector ALUSrcA debe ser forzado a un valor seguro determinista (2'b00) por la FSM, o el bloque Verilog del multiplexor debe incluir una cláusula default: out_src_a = in_pc;.
 
 #### Descripción Operativa
 
@@ -348,7 +355,7 @@ A diferencia de una arquitectura monociclo donde se requieren sumadores independ
 | Puerto | Dirección | Ancho (bits) | Origen / Destino | Descripción |
 | --- | --- | --- | --- | --- |
 | `in_reg_alu` | Entrada | 32 | Registro `ALUOut` | Resultado de la ALU calculado y almacenado en el registro intermedio durante la etapa de *Execute*. |
-| `in_reg_datos` | Entrada | 32 | Registro `Data` (MDR) | Dato de 32 bits leído desde la Memoria Unificada y retenido durante la etapa de *Memory*. |
+| `in_reg_datos` | Entrada | 32 | Registro `Datos` | Dato de 32 bits leído desde la Memoria Unificada y retenido durante la etapa de *Memory*. |
 | `in_alu` | Entrada | 32 | Unidad Aritmética Lógica (`ALU`) | Resultado combinacional directo (sin registrar) proveniente de la salida de la ALU. |
 | `ResultSrc` | Control | 2 | Unidad de Control (FSM) | Selector de 2 bits emitiendo el código de control que determina la fuente del bus de resultado. |
 | `out_result` | Salida | 32 | Banco de Registros (`Write_Data`), Mux `AdrSrc`, `PC` | Bus de resultado final entregado a la reescritura de registros, dirección de memoria o actualización del $PC$. |
@@ -357,7 +364,7 @@ A diferencia de una arquitectura monociclo donde se requieren sumadores independ
 
 | `ResultSrc` | Salida (`out_result`) | Etapa de Ejecución | Instrucciones que lo Utilizan | Descripción de Operación |
 | --- | --- | --- | --- | --- |
-| **`2'b00`** | `in_reg_alu` (`Salida_ALU`) | *Write-Back* / *Memory* | Tipo I, Tipo S | Entrega el resultado de operaciones aritméticas/lógicas o la dirección efectiva calculada en el ciclo previo hacia la reescritura de registros (`Write_Data`) o a la memoria (`in_result` del Mux `AdrSrc`). |
+| **`2'b00`** | `in_reg_alu` (`ALUOut`) | *Write-Back* / *Memory* | Tipo I, Tipo S | Entrega el resultado de operaciones aritméticas/lógicas o la dirección efectiva calculada en el ciclo previo hacia la reescritura de registros (`Write_Data`) o a la memoria (`in_result` del Mux `AdrSrc`). |
 | **`2'b01`** | `in_reg_datos` (`Datos`) | *Write-Back* | Tipo I | Entrega la palabra de datos leída de la RAM y retenida en el registro `Datos` para guardarla en el registro destino `rd`. |
 | **`2'b10`** | `in_alu` | *Fetch* / *Decode* / *Execute* | **Todas** las instrucciones (en *Fetch*), Tipo J, Tipo B | Entrega el resultado directo de la ALU ($PC + 4$ en *Fetch* para cargar en el $PC$, o la dirección de salto $OldPC + ImmExt$ en *Decode*/*Execute*). |
 
@@ -373,24 +380,6 @@ Para la instrucción de carga `lw`, la RAM entrega el dato en el Ciclo 4 (*Memor
 Se utiliza cuando se requiere actualizar el $PC$ o capturar un resultado inmediatamente sin esperar un ciclo adicional en el registro `ALUOut`:
 * **Fase de *Fetch* (Ciclo 1):** La ALU calcula $PC + 4$ de forma combinacional; la FSM selecciona `ResultSrc = 2'b10` para realimentar este valor inmediatamente al puerto `in_pc_next` del $PC$.
 * **Saltos e Instrucción `jal`:** Suministra la dirección objetivo calculada ($OldPC + ImmExt$) o la dirección de retorno ($PC + 4$) para guardarla en el registro enlace $ra$ (`x1`).
-
----
-
-Revisando el documento `0_Specs_3.md` con las reglas que definiste, la estructura es sólida y coherente. Solo quedan **3 detalles menores** para que esté alineado al 100%:
-
-1. **Memoria Unificada (Sección 3 - Tabla de Interfaz):** En el puerto `WriteData`, la columna *Origen / Destino* aún indica `Registro Write Data`. Debe ajustarse a **`Registro B`**.
-
-
-2. **Memoria Unificada (Sección 3 - Tabla de Operaciones):** En la fila de lectura `lw`, la descripción indica que el dato se deposita en el *registro `Data*`. Debe decir **`registro Datos`**.
-
-
-3. **Mux de Resultados (Sección 9):** En la tabla de interfaz y descripciones, reemplazar las referencias residuales de `Data` por **`Datos`**.
-
-
-
----
-
-A continuación tienes las especificaciones técnicas estandarizadas de los **6 Registros Intermedios** para agregarlas directamente al final de tu documento (`Secciones 10 a 15`):
 
 ---
 
@@ -439,7 +428,7 @@ En el Ciclo 1 (*Fetch*), la FSM establece `IRWrite = 1`. En el flanco de subida 
 
 ### 12. Registro de Datos de Memoria (`Datos`)
 
-* **Módulo:** `reg_data`
+* **Módulo:** `reg_datos`
 * **Tipo:** Registro secuencial síncrono de 32 bits.
 * **Propósito:** Capturar de la Memoria Unificada la palabra de datos leída durante la etapa de acceso a memoria (*Memory*), aislándola para la etapa de Reescritura (*Write-Back*).
 
@@ -521,50 +510,215 @@ En el Ciclo 3 (*Execute*), la ALU computa la operación asignada. Al terminar el
 
 ---
 
----
-
 ### 16. Unidad de Control (FSM Principal)
 
 * **Módulo:** `control_fsm`
-* **Tipo:** Máquina de Estados Finitos (FSM tipo Moore) combinada con decodificadores auxiliares.
-* **Propósito:** Coordinar la secuencia temporal de ejecución de cada instrucción a través de los ciclos de reloj, emitiendo las señales de control para la ruta de datos y la memoria RAM.
+* **Tipo:** Máquina de Estados Finitos (FSM) tipo Moore, implementada mediante lógica secuencial síncrona y lógica combinacional para la decodificación de siguiente estado y salidas.
+* **Propósito:** Actuar como el núcleo de coordinación de la microarquitectura multiciclo. Lee los bits de la instrucción actual (`opcode`) desde el registro `Instrucciones` para transitar entre estados y generar las señales de control de alto nivel que rigen la ruta de datos y los accesos a memoria en cada ciclo de reloj.
 
-#### Tabla de Estados y Salidas de Control (FSM Moore)
+#### Tabla de Interfaz (Puertos)
 
-| Estado | Etapa / Función | Señales de Control Activas | Estado Siguiente |
-| :--- | :--- | :--- | :--- |
-| **`FETCH`** | Búsqueda de Instrucción | `IRWrite=1`, `PCUpdate=1`, `ALUSrcA=2'b00`, `ALUSrcB=2'b10`, `ALUControl=3'b000` (ADD), `ResultSrc=2'b10` | `DECODE` |
-| **`DECODE`** | Decodificación y Lectura | `ALUSrcA=2'b01` ($OldPC$), `ALUSrcB=2'b01` ($Imm$), `ALUControl=3'b000` (ADD) | Según `opcode` |
-| **`MEMADR`** | Cálculo Dir. Memoria | `ALUSrcA=2'b10` ($A$), `ALUSrcB=2'b01` ($Imm$), `ALUControl=3'b000` (ADD) | `MEMREAD` (`lw`) / `MEMWRITE` (`sw`/`sb`) |
-| **`MEMREAD`** | Lectura de RAM | `AdrSrc=1` | `MEMWB` |
-| **`MEMWB`** | Reescritura Carga | `ResultSrc=2'b01` ($Datos$), `RegWrite=1` | `FETCH` |
-| **`MEMWRITE`** | Escritura en RAM | `AdrSrc=1`, `MemWrite=1` | `FETCH` |
-| **`EXEC_I`** | Ejecución Arit/Lóg | `ALUSrcA=2'b10` ($A$), `ALUSrcB=2'b01` ($Imm$), `ALUControl` según `funct3` | `ALUWB` |
-| **`EXEC_LUI`** | Carga Inmediato Alto | `ALUSrcB=2'b01` ($Imm$), `ALUControl=3'b100` (PASS-B) | `ALUWB` |
-| **`ALUWB`** | Reescritura Registro | `ResultSrc=2'b00` ($ALUOut$), `RegWrite=1` | `FETCH` |
-| **`BRANCH`** | Evaluación de Salto | `ALUSrcA=2'b10` ($A$), `ALUSrcB=2'b00` ($B$), `Branch=1`, `ALUControl=3'b001` (SUB) | `FETCH` |
-| **`JAL1`** | Actualización PC Salto| `PCUpdate=1`, `ResultSrc=2'b00` ($ALUOut$) | `JAL2` |
-| **`JAL2`** | Guardar Enlace $ra$ | `ALUSrcA=2'b01` ($OldPC$), `ALUSrcB=2'b10` (+4), `ResultSrc=2'b10`, `RegWrite=1` | `FETCH` |
-| **`HALT`** | Estado de Parada | `halted = 1` (Mantiene congelado el procesador ante instrucción ilegal o fin de programa) | `HALT` |
+| Puerto | Dirección | Ancho (bits) | Origen / Destino | Descripción |
+| --- | --- | --- | --- | --- |
+| `clk` | Entrada | 1 | Sistema | Señal de reloj principal. Las transiciones de estado de la FSM ocurren en el flanco de subida (*posedge*). |
+| `rst` | Entrada | 1 | Sistema | Reinicio global. Restablece la máquina de estados de manera síncrona o asíncrona al estado inicial `FETCH`. |
+| `opcode` | Entrada | 7 | Registro `Instrucciones[6:0]` | Código de operación de la instrucción actual. Utilizado por la FSM combinacional para determinar el estado siguiente tras la decodificación. |
+| `PCUpdate` | Salida | 1 | Control Escritura PC (`pc_write_logic`) | Fuerza la habilitación de escritura del $PC$. Se activa incondicionalmente en la fase de *Fetch* y en la instrucción `jal`. |
+| `Branch` | Salida | 1 | Control Escritura PC (`pc_write_logic`) | Indica que se está evaluando un salto condicional (`bne`, `bge`), habilitando la lógica de cálculo `BranchTaken`. |
+| `IRWrite` | Salida | 1 | Registro `Instrucciones` | Habilita la captura de una nueva instrucción desde la Memoria Unificada hacia el registro `Instrucciones`. |
+| `MemWrite` | Salida | 1 | Memoria Unificada (`Memory`) | Habilitador global de escritura síncrona en la memoria RAM. |
+| `RegWrite` | Salida | 1 | Banco de Registros (`Registers`) | Habilitador de escritura en el registro destino `rd` seleccionado. |
+| `ResultSrc` | Salida | 2 | Mux `ResultSrc` | Selector que define el origen del dato de escritura o actualización del $PC$ (`00`=$ALUOut$, `01`=$Datos$, `10`=$ALU$). |
+| `ALUSrcA` | Salida | 2 | Mux `ALUSrcA` | Selector del primer operando de la ALU (`00`=$PC$, `01`=$OldPC$, `10`=$A$). |
+| `ALUSrcB` | Salida | 2 | Mux `ALUSrcB` | Selector del segundo operando de la ALU (`00`=$B$, `01`=$ImmExt$, `10`=Constante 4). |
+| `AdrSrc` | Salida | 1 | Mux `AdrSrc` | Selector de dirección para la RAM (`0`=$PC$, `1`=Dirección en `ALUOut`). |
+|`ALUOp` | Salida | 2 | Decodificador ALU (alu_decoder)| Código genérico de operación de la ALU (`00`=$ADD$, `01`=$SUB$, `10`=$Tipo-I$, `11`=$PASS-B$). |
+| `halted` | Salida | 1 | Salida Superior (*Top Level*) | Bandera de parada. Se evalúa en `'1'` al detectar una instrucción no soportada o alcanzar el final del programa, congelando la FSM en el estado `HALT`. |
+
+*(Nota: Las señales refinadas como `ALUControl`, `ImmSrc` y `ByteWrite` se generan en decodificadores auxiliares anexos a la FSM para evitar explosión de estados).*
+
+#### Tabla de Estados y Generación de Señales (Tipo Moore)
+
+| Estado de la FSM | Operación Lógica en la Ruta de Datos | Señales de Control Activas | Estado Siguiente |
+| --- | --- | --- | --- |
+| **`FETCH`** | Búsqueda de Instrucción:<br><br>1. Lee instrucción de RAM usando $PC$.<br><br>2. Guarda en registro `Instrucciones`.<br><br>3. Calcula y actualiza $PC = PC + 4$. | `IRWrite = 1`<br><br>`PCUpdate = 1`<br><br>`AdrSrc = 0`<br><br>`ALUSrcA = 2'b00` ($PC$)<br><br>`ALUSrcB = 2'b10` (4)<br><br>`ResultSrc = 2'b10` ($ALU$)<br><br>`ALUOp = 2'b00` (ADD) | Transición incondicional a `DECODE`. |
+| **`DECODE`** | Decodificación y Lectura:<br><br>1. El Banco de Registros entrega asíncronamente $rs1$ a $A$ y $rs2$ a $B$.<br><br>2. ALU calcula dirección base para posibles saltos ($OldPC + ImmExt$) y almacena en `ALUOut`. | `ALUSrcA = 2'b01` ($OldPC$)<br><br>`ALUSrcB = 2'b01` ($ImmExt$)<br><br>`ALUOp = 2'b00` (ADD) | Depende del `opcode` (`MEMADR`, `EXEC_I`, `EXEC_LUI`, `BRANCH`, `JAL1` o `HALT`). |
+| **`MEMADR`** | Cálculo de Dirección Base:<br><br>Calcula dirección de acceso a RAM sumando el registro base $A$ ($rs1$) con el inmediato (*offset*), depositando en `ALUOut`. | `ALUSrcA = 2'b10` ($A$)<br><br>`ALUSrcB = 2'b01` ($ImmExt$)<br><br>`ALUOp = 2'b00` (ADD) | Si `lw` $\rightarrow$ `MEMREAD`<br><br>Si `sw`/`sb` $\rightarrow$ `MEMWRITE`. |
+| **`MEMREAD`** | Lectura de RAM:<br><br>La memoria lee los datos apuntados por `ALUOut` y los deposita en el bus, listos para ser muestreados por el registro `Datos`. | `AdrSrc = 1` ($ALUOut$) | Transición incondicional a `MEMWB`. |
+| **`MEMWB`** | Reescritura Carga a Registro:<br><br>Transfiere la palabra desde el registro `Datos` hacia el Banco de Registros. | `ResultSrc = 2'b01` ($Datos$)<br><br>`RegWrite = 1` | Transición a `FETCH`. |
+| **`MEMWRITE`** | Escritura en RAM:<br><br>Almacena la palabra o byte presente en el registro `B` dentro de la RAM usando la dirección en `ALUOut`. | `AdrSrc = 1` ($ALUOut$)<br><br>`MemWrite = 1` | Transición a `FETCH`. |
+| **`EXEC_I`** | Ejecución Arit/Lóg:<br><br>Procesa en la ALU el registro $A$ ($rs1$) contra el inmediato $ImmExt$ (para `addi`, `slli`, `andi`) y guarda en `ALUOut`. | `ALUSrcA = 2'b10` ($A$)<br><br>`ALUSrcB = 2'b01` ($ImmExt$)<br><br>`ALUOp = 2'b10` decodificado según `funct3` | Transición a `ALUWB`. |
+| **`EXEC_LUI`** | Carga de Inmediato Superior:<br><br>La ALU ejecuta la operación PASS-B, transfiriendo directamente el inmediato del registro `Instrucciones` al registro `ALUOut`. | `ALUSrcA = 2'b00` (Irrelevante)<br><br>`ALUSrcB = 2'b01` ($ImmExt$)<br><br>`ALUOp = 2'b11` (PASS-B) | Transición a `ALUWB`. |
+| **`ALUWB`** | Reescritura ALU a Registro:<br><br>Transfiere el resultado computado desde `ALUOut` hacia el Banco de Registros. | `ResultSrc = 2'b00` ($ALUOut$)<br><br>`RegWrite = 1` | Transición a `FETCH`. |
+| **`BRANCH`** | Evaluación de Salto Condicional:<br><br>La ALU realiza una resta o evaluación de signo entre $A$ ($rs1$) y $B$ ($rs2$). Emite señal genérica de control de salto `Branch`. | `ALUSrcA = 2'b10` ($A$)<br><br>`ALUSrcB = 2'b00` ($B$)<br><br>`ALUOp = 2'b01` (SUB)<br><br>**`Branch = 1`** | Transición a `FETCH`. |
+| **`JAL1`** | Ejecutar Salto Incondicional:<br><br>Fuerza la carga inmediata de la dirección objetivo (previamente calculada en `DECODE` y retenida en `ALUOut`) en el $PC$. | **`PCUpdate = 1`**<br><br>`ResultSrc = 2'b00` ($ALUOut$) | Transición a `JAL2`. |
+| **`JAL2`** | Guardar Dirección de Retorno:<br><br>Calcula y almacena la dirección de la siguiente instrucción secuencial ($OldPC + 4$) en el Banco de Registros ($ra$/$rd$). | `ALUSrcA = 2'b01` ($OldPC$)<br><br>`ALUSrcB = 2'b10` (4)<br><br>`ResultSrc = 2'b10` ($ALU$)<br><br>`RegWrite = 1`<br><br>`ALUOp = 2'b00` (ADD) | Transición a `FETCH`. |
+| **`HALT`** | Parada de Ejecución:<br><br>Estado trampa que bloquea el avance del procesador. Se alcanza si el `opcode` decodificado no pertenece al subconjunto soportado o si se lee una instrucción en ceros (`0x00000000`). | `halted = 1`<br><br>Todas las señales de escritura en `0`. | Se mantiene en `HALT` de forma infinita hasta reiniciar el sistema con `rst`. |
+
+#### Descripción Operativa
+
+La **Unidad de Control (FSM)** organiza la ejecución temporal de cada instrucción garantizando que los módulos físicos (memoria, banco de registros, ALU) operen en fases coordinadas sin causar colisiones de datos en los buses, logrando la estructura multiciclo fundamental de la arquitectura.
+
+1. **Diseño Tipo Moore:** La FSM implementada es del tipo Moore, lo que significa que el valor de las señales de control de salida depende única y exclusivamente del estado actual de la máquina y no de transiciones instantáneas, lo que garantiza estabilidad en las entradas asíncronas de los multiplexores y la ALU durante todo un pulso de reloj completo.
+2. **Desacoplamiento de Complejidad:** La FSM no emite los códigos de control finos (como el selector aritmético exacto `ALUControl` o el bit de enmascaramiento de memoria `ByteWrite`). Únicamente activa el estado general (ej. `EXEC_I`); son los bloques decodificadores auxiliares independientes quienes mezclan este estado general con los sub-campos de instrucción `funct3` y `funct7` para concretar las acciones.
 
 ---
 
-### 17. Resumen de Señales de Control de la Microarquitectura
+### 17. Control de Escritura PC (`pc_write_logic`)
 
-| Señal de Control | Ancho (bits) | Módulo Origen | Módulo Destino | Descripción / Función |
-| :--- | :---: | :--- | :--- | :--- |
-| `PCUpdate` | 1 | FSM (`control_fsm`) | `pc_write_logic` | Forzado incondicional de escritura en el $PC$ (fase de *Fetch* y *JAL*). |
-| `Branch` | 1 | FSM (`control_fsm`) | `pc_write_logic` | Habilita la evaluación condicional de saltos (`bne`, `bge`). |
-| `IRWrite` | 1 | FSM (`control_fsm`) | `reg_instructions` | Habilita la captura de la palabra de instrucción desde la RAM. |
-| `AdrSrc` | 1 | FSM (`control_fsm`) | `mux_adr_src` | Selecciona dirección de RAM (`0`: $PC$, `1`: $Result$). |
-| `MemWrite` | 1 | FSM (`control_fsm`) | `memory` | Habilita la escritura síncrona en la Memoria RAM. |
-| `ByteWrite` | 4 | Decodificador | `memory` | Máscara de habilitación de byte para la instrucción `sb`. |
-| `RegWrite` | 1 | FSM (`control_fsm`) | `register_file` | Habilita la escritura en el registro destino `Write_Reg`. |
-| `ImmSrc` | 3 | Decodificador | `imm_extend` | Selector de formato de inmediato (`000`:I, `001`:S, `010`:B, `011`:J, `100`:U). |
-| `ALUSrcA` | 2 | FSM (`control_fsm`) | `mux_alu_src_a` | Selector de entrada A de ALU (`00`:$PC$, `01`:$OldPC$, `10`:$A$). |
-| `ALUSrcB` | 2 | FSM (`control_fsm`) | `mux_alu_src_b` | Selector de entrada B de ALU (`00`:$B$, `01`:$ImmExt$, `10`:$4$). |
-| `ALUControl` | 3 | Decodificador ALU | `alu` | Operación de ALU (`000`:ADD, `001`:SUB, `010`:AND, `011`:SLL, `100`:PASS-B). |
-| `ResultSrc` | 2 | FSM (`control_fsm`) | `mux_result_src` | Selector de resultado (`00`:$ALUOut$, `01`:$Datos$, `10`:$ALUDirecto$). |
+* **Módulo:** `pc_write_logic`
+* **Tipo:** Lógica combinacional.
+* **Propósito:** Evaluar y sintetizar las banderas booleanas provenientes de la FSM de Control y de la Unidad Aritmética Lógica (ALU) para emitir la señal definitiva de habilitación de escritura (`PCWrite`) que permite la modificación del registro Program Counter.
+
+#### Tabla de Interfaz (Puertos)
+
+| Puerto | Dirección | Ancho (bits) | Origen / Destino | Descripción |
+| --- | --- | --- | --- | --- |
+| `PCUpdate` | Entrada | 1 | Unidad de Control (FSM) | Habilitador incondicional. Ordena escribir el PC sin importar evaluaciones lógicas (se usa para saltos incondicionales `jal` y el avance base del $PC+4$ en *Fetch*). |
+| `Branch` | Entrada | 1 | Unidad de Control (FSM) | Habilitador condicional. Señal proveniente del estado `BRANCH` que indica que el procesador está intentando ejecutar un salto sujeto a evaluación matemática. |
+| `Zero` | Entrada | 1 | Unidad Aritmética Lógica (`ALU`) | Bandera de Cero. Indica que el resultado de la sustracción en la ALU fue nulo (ambos operandos eran iguales). Se emplea para evaluar la desigualdad en la instrucción `bne`. |
+| `GE` | Entrada | 1 | Unidad Aritmética Lógica (`ALU`) | Bandera de Mayor o Igual (*Greater or Equal*). Se activa si, interpretando los valores con signo, $SrcA \ge SrcB$. Evalúa el salto de la instrucción `bge`. |
+| `funct3` | Entrada | 3 | Registro `Instrucciones[14:12]` | Campo de instrucción. Opcional/Requerido para discriminar la instrucción exacta dentro del formato de saltos (ej. `001` para `bne`, `101` para `bge`). |
+| `PCWrite` | Salida | 1 | Program Counter (`PC`) | Señal global generada hacia el pin `Write Enable` del registro PC. Permite cargar la dirección presente en la entrada `in_pc_next`. |
+
+#### Lógica Booleana y Generación de Señales Internas
+
+El corazón de este bloque radica en la generación interna de la señal combinacional **`BranchTaken`**, la cual consolida la intención de salto (`Branch`=1) con la evaluación matemática efectiva provista por las banderas de la ALU.
+
+1. **Determinación del Tipo de Salto:** La lógica interna lee el campo `funct3` (disponible desde el registro `Instrucciones`) para determinar qué condición está siendo evaluada en el ciclo actual:
+* **Es `bne**`: Se detecta al leer `funct3 == 3'b001`. El salto se efectúa si los operandos son **diferentes**, por lo cual la bandera `Zero` de la ALU debe ser estrictamente `0` ($\neg\text{Zero}$).
+* **Es `bge**`: Se detecta al leer `funct3 == 3'b101`. El salto se efectúa si $rs1 \ge rs2$ en magnitud signada, condición confirmada por la bandera directa $\text{GE} == 1$.
+
+2. **Evaluación Efectiva (`BranchTaken`):** Esta señal interna se sintetiza combinando la intención con la confirmación:
+
+$$\text{BranchTaken} = \text{Branch} \land \left[(\text{is bne} \land \neg\text{Zero}) \lor (\text{is bge} \land \text{GE}) \right]$$
+
+3. **Ecuación de Salida (`PCWrite`):** La señal principal del módulo entregada al registro físico responde formalmente a un agrupamiento OR lógico:
+
+$$\text{PCWrite} = \text{PCUpdate} \lor \text{BranchTaken}$$
+
+#### Descripción Operativa
+
+El módulo **Control de Escritura PC (`pc_write_logic`)** aísla la toma de decisiones críticas de direccionamiento para no sobrecargar el flujo estático de la FSM de Control Principal. Su principal utilidad radica en la asincronía de la evaluación.
+
+Al encontrarse en el estado `BRANCH` de la máquina de estados, el reloj interno del sistema no avanza el estado hasta evaluar la condición de la ALU. Las banderas físicas resultantes (`Zero`, `GE`) viajan velozmente al bloque `pc_write_logic` a través de los buses combinacionales. Si la condición lógica se cumple, la salida combinacional `PCWrite` conmuta inmediatamente a `'1'`. De este modo, al ocurrir el flanco de subida al finalizar el estado, la condición ya ha sido debidamente procesada y el $PC$ efectúa la actualización sincrónica con su nueva dirección destino ($OldPC + ImmExt$) o, de fallar la condición, descarta el salto y permanece apuntando a $PC+4$.
+
+---
+
+### 18. Decodificadores Auxiliares
+
+* **Módulos:** `imm_decoder`, `alu_decoder`, `byte_decoder`.
+* **Tipo:** Lógica combinacional pura.
+* **Propósito:** Desacoplar la complejidad de la FSM principal evaluando campos específicos de la instrucción (`opcode`, `funct3`, `funct7`) y bits de alineación de memoria para generar señales de control granulares y exactas.
+
+#### 18.1 Decodificador de Inmediatos (`imm_decoder`)
+
+Se encarga de identificar el formato de la instrucción actual a partir de su código de operación (`opcode`) para instruir al módulo `imm_extend` sobre cómo reordenar los bits.
+
+| `opcode` (Instrucción `[6:0]`) | Tipo de Instrucción detectado | Salida `ImmSrc` | Operación en Módulo `imm_extend` |
+| --- | --- | --- | --- |
+| `0010011` / `0000011` | **Tipo I** (`addi`, `lw`, `slli`, `andi`) | **`3'b000`** | Extensión de signo de 12 bits (`Instr[31:20]`). |
+| `0100011` | **Tipo S** (`sw`, `sb`) | **`3'b001`** | Concatenación de campos bajos y altos (`Instr[31:25]`, `Instr[11:7]`). |
+| `1100011` | **Tipo B** (`bne`, `bge`) | **`3'b010`** | Reconstrucción de salto de 13 bits con $LSB = 0$. |
+| `1101111` | **Tipo J** (`jal`) | **`3'b011`** | Reconstrucción de salto de 21 bits con $LSB = 0$. |
+| `0110111` | **Tipo U** (`lui`) | **`3'b100`** | Desplazamiento a la parte alta con 12 ceros inferiores. |
+
+#### 18.2 Decodificador de ALU (`alu_decoder`)
+
+Traduce una señal de 2 bits de "Operación Genérica" (`ALUOp`) emitida por la FSM y los campos de la instrucción en el código de 3 bits exacto (`ALUControl`) que consume la ALU física.
+
+| `ALUOp` (FSM) | `funct3` (Inst. `[14:12]`) | Instrucción Efectiva | Salida `ALUControl` | Acción en la ALU |
+| --- | --- | --- | --- | --- |
+| **`00`** | `XXX` | Cargas, Saltos, PC+4 | **`3'b000`** | Suma incondicional (`ADD`). |
+| **`01`** | `XXX` | Evaluación de condición | **`3'b001`** | Resta incondicional (`SUB`). |
+| **`11`** | `XXX` | Carga constante superior | **`3'b100`** | Transfiere entrada B directo (`PASS-B`). |
+| **`10`** | `000` | Aritmética (`addi`) | **`3'b000`** | Suma (`ADD`). |
+| **`10`** | `111` | Lógica de enmascaramiento (`andi`) | **`3'b010`** | AND lógico bit a bit. |
+| **`10`** | `001` | Desplazamiento (`slli`) | **`3'b011`** | Desplazamiento lógico a la izquierda (`SLL`). |
+
+#### 18.3 Decodificador de Máscara de Memoria (`byte_decoder`)
+
+Genera el bus `ByteWrite` de 4 bits exigido por el bloque de RAM para gobernar las escrituras aisladas de bytes durante instrucciones Tipo S, basándose en la alineación física.
+
+| `MemWrite` | `funct3` | Tipo de Almacenamiento | `Address[1:0]` (Alineación) | Salida `ByteWrite` | Acción Física en RAM |
+| --- | --- | --- | --- | --- | --- |
+| **`0`** | `XXX` | Lectura general | `XX` | **`4'b0000`** | Bloquea toda escritura. |
+| **`1`** | `010` | Palabra (`sw`) | `XX` (Asume alineado) | **`4'b1111`** | Sobrescribe los 4 bytes simultáneamente. |
+| **`1`** | `000` | Byte independiente (`sb`) | `2'b00` | **`4'b0001`** | Sobrescribe únicamente el byte 0 (bits `[7:0]`). |
+| **`1`** | `000` | Byte independiente (`sb`) | `2'b01` | **`4'b0010`** | Sobrescribe únicamente el byte 1 (bits `[15:8]`). |
+| **`1`** | `000` | Byte independiente (`sb`) | `2'b10` | **`4'b0100`** | Sobrescribe únicamente el byte 2 (bits `[23:16]`). |
+| **`1`** | `000` | Byte independiente (`sb`) | `2'b11` | **`4'b1000`** | Sobrescribe únicamente el byte 3 (bits `[31:24]`). |
+
+---
+
+### 19. Interconexión del *Datapath* (Ruta de Datos)
+
+La microarquitectura orquesta sus 18 bloques lógicos, registros secuenciales y unidades aritméticas a través de un esquema de buses de 32 bits jerarquizado en 5 grandes zonas de interconexión física:
+
+#### 1. Malla de Direccionamiento de Memoria (Búsqueda y Acceso a RAM)
+
+* El registro físico **`PC`** entrega continuamente la dirección actual en el puerto `in_pc` del multiplexor **`mux_adr_src`**.
+* El registro **`ALUOut`** (que contiene la dirección efectiva calculada en ciclos previos) se enlaza con el puerto `in_result` del **`mux_adr_src`** a través del canal `00` del bus principal de resultados.
+* El **`mux_adr_src`** encamina una única dirección de 32 bits hacia el puerto `Address` de la **`Memory`**, compartiendo hardware para fases de *Fetch* y acceso a *Datos*.
+
+#### 2. Red de Extracción y Distribución de Instrucciones (Decodificación)
+
+* Durante el *Fetch*, la **`Memory`** emite una palabra en `ReadData`, capturada por el registro **`Instrucciones`** al activar `IRWrite`.
+* El bus de salida `out_instruction` del registro **`Instrucciones`** se divide topológicamente:
+* Los bits `[6:0]` alimentan a la **FSM de Control** (`opcode`).
+* Los bits `[19:15]`, `[24:20]` y `[11:7]` enrutan físicamente hacia las entradas `Read_Reg_1`, `Read_Reg_2` y `Write_Reg` del **Banco de Registros**.
+* Los bits `[31:7]` cruzan masivamente hacia el generador **`imm_extend`**.
+* Los bits `[14:12]` (`funct3`) alimentan a los decodificadores auxiliares **`alu_decoder`** y **`byte_decoder`**.
+
+
+
+#### 3. Bus de Operandos y Ejecución (ALU)
+
+* El **Banco de Registros** extrae el contenido direccionado asíncronamente. En el flanco activo, estos operandos se retienen de forma segura en los registros **`A`** y **`B`**.
+* El canal `SrcA` de la ALU requiere convergencia: se alimenta desde el **`mux_alu_src_a`**, recogiendo buses del **`PC`**, **`OldPC`** y el registro intermedio **`A`**.
+* El canal `SrcB` de la ALU requiere un abanico mayor: se alimenta desde el **`mux_alu_src_b`**, convergiendo el registro intermedio **`B`**, la expansión de 32 bits desde **`imm_extend`** y un alambre con una constante en hardware (`32'd4`).
+* La salida de la **`ALU`** se divide inmediatamente en una vía asíncrona hacia el multiplexor final, y una vía síncrona retenida mediante el registro **`ALUOut`**.
+
+#### 4. Bus de Transferencia y Escritura a RAM
+
+* El registro intermedio **`B`**, además de abastecer a la ALU, enruta su salida `out_b` de manera directa hacia el puerto `WriteData` de la **`Memory`**.
+* Esto permite inyectar datos para instrucciones de almacenamiento (`sw`, `sb`) de forma paralela a cualquier cómputo en la ALU.
+
+#### 5. Malla de Resultados, Reescritura y Lazos de Retorno (Write-Back)
+
+* El eje central de retroalimentación es el **`mux_result_src`**, el cual unifica la salida estabilizada en **`ALUOut`**, la información extraída de RAM retenida en el registro **`Datos`**, y un lazo de bypass asíncrono desde la **`ALU`**.
+* La salida global de este multiplexor (`out_result`) retorna masivamente a lo largo de toda la placa de circuito para:
+1. Ingresar en el puerto `Write_Data` del **Banco de Registros** para modificar el contexto de software.
+2. Proveer direcciones a la memoria para el multiplexor **`mux_adr_src`**.
+3. Ingresar al puerto `in_pc_next` del **`PC`** para la actualización de saltos y flujos.
+
+
+* En paralelo, las líneas físicas puras de 1 bit generadas en la ALU (`Zero`, `GE`) viajan ininterrumpidamente hacia el módulo combinacional **`pc_write_logic`**, el cual cierra el ciclo realimentando la orden `PCWrite` sobre el Program Counter.
+
+---
+
+### 20. Tabla Maestra de Señales de Control de la Microarquitectura
+
+Esta matriz define el diccionario oficial de conmutación de la microarquitectura. Detalla el origen en la jerarquía de control y su impacto exacto en el *datapath*.
+
+| Señal de Control | Ancho (bits) | Módulo Origen | Módulo Destino | Descripción y Función de Hardware |
+| --- | --- | --- | --- | --- |
+| **`PCUpdate`** | 1 | Unidad de Control (FSM) | `pc_write_logic` | Activador incondicional lógico para la escritura del PC. Su valor en `'1'` fuerza el avance del puntero inminentemente en fases de *Fetch* y `jal`. |
+| **`Branch`** | 1 | Unidad de Control (FSM) | `pc_write_logic` | Indicador de salto. Ordena al bloque auxiliar habilitar la matriz de evaluación para interpretar las banderas de la ALU durante ciclos `BRANCH`. |
+| **`BranchTaken`** | 1 | `pc_write_logic` (Bloque Interno) | `pc_write_logic` | *Señal de lógica interna sintetizada*. Evalúa como `'1'` cuando el salto condicional es verificado y concedido por el circuito. |
+| **`PCWrite`** | 1 | `pc_write_logic` | `pc` | Clavija final habilitadora. Permite al Flip-Flop del contador de programa cargar el bus alojado en `in_pc_next`. |
+| **`IRWrite`** | 1 | Unidad de Control (FSM) | `reg_instructions` | Segregador de estado. Cuando es `'1'` (Ciclo 1), el registro absorbe el estado de la RAM; cuando es `'0'`, aisla la instrucción y la estabiliza. |
+| **`AdrSrc`** | 1 | Unidad de Control (FSM) | `mux_adr_src` | Selector del bus de direcciones hacia la RAM. `'0'` rutea el avance del $PC$, `'1'` enruta los resultados estabilizados en $ALUOut$. |
+| **`MemWrite`** | 1 | Unidad de Control (FSM) | `memory` | Puerta maestra de escritura para el bloque de RAM síncrona. Si es `'0'`, la memoria no permite modificaciones independientemente del bus. |
+| **`ByteWrite`** | 4 | `byte_decoder` | `memory` | Conmutador fino para el habilitador de bytes de la RAM, permitiendo almacenar la memoria palabra entera (`1111`) o selectiva parcial (ej. `0100`). |
+| **`RegWrite`** | 1 | Unidad de Control (FSM) | `registers` | Activador de escritura sobre el arreglo de 32x32. Habilita la actualización en la celda designada por `Write_Reg` (`rd`). |
+| **`ImmSrc`** | 3 | `imm_decoder` | `imm_extend` | Comando que dictamina al generador interno el tipo de instrucción que está decodificando, indicando cómo desempaquetar y extender el inmediato. |
+| **`ALUSrcA`** | 2 | Unidad de Control (FSM) | `mux_alu_src_a` | Administrador del canal A. Define si el cómputo se hará utilizando la dirección del `$PC$`, el resguardo de saltos en `$OldPC$` o el registro temporal de lectura `$A$`. |
+| **`ALUSrcB`** | 2 | Unidad de Control (FSM) | `mux_alu_src_b` | Administrador del canal B. Alterna entre procesar la constante secuencial (`$4$`), el `$ImmExt$`, o el registro fuente complementario `$B$`. |
+| ALUOp | 2 | Unidad de Control (FSM) | alu_decoder | Código genérico de operación (00=Suma, 01=Resta, 10=Tipo I, 11=PASS-B) enviado al decodificador secundario. |
+| **`ALUControl`** | 3 | `alu_decoder` | `alu` | Selector determinista que transforma la etapa de estado y los bits directos `funct3` en la orden de aritmética física (Suma, Resta, PASS-B, AND, SLL). |
+| **`ResultSrc`** | 2 | Unidad de Control (FSM) | `mux_result_src` | Selector de reescritura principal del procesador. Define si la salida de datos de todo el *datapath* es una memoria (`$Datos$`), registro interno retenido (`$ALUOut$`) o paso lógico sin estado (`$ALU$`). |
+| **`halted`** | 1 | Unidad de Control (FSM) | Sistema Externo (Top) | Indicador visual de trampa (trap). Refleja externamente que el sistema interceptó una interrupción sin manejar, apagando la secuencia dinámica. |
 
 ---
 

@@ -1,66 +1,36 @@
-`timescale 1ns/1ps
-//==============================================================================
-// M贸dulo : alu
-// Proyecto: Microarquitectura RV32I multiciclo - MT-7003 - Grupo N掳 3
-//------------------------------------------------------------------------------
-// Funcionalidad:
-//   Unidad aritm茅tico-l贸gica combinacional de 32 bits. En la microarquitectura
-//   multiciclo esta 煤nica ALU se reutiliza en todos los ciclos:
-//     - Fetch   : PC + 4
-//     - Decode  : OldPC + inmediato (destino de saltos bne/bge/jal)
-//     - Execute : operaci贸n de addi / slli / andi, direcci贸n de lw/sw, lui
-//     - Branch  : comparaci贸n de rs1 con rs2 (resta o menor-que)
-//
-// Entradas:
-//   a        [31:0] Operando A (sale del MUX ALUSrcA)
-//   b        [31:0] Operando B (sale del MUX ALUSrcB)
-//   alu_ctrl [2:0]  Operaci贸n a realizar (ver tabla)
-//
-// Salidas:
-//   result   [31:0] Resultado de la operaci贸n
-//   zero            1 cuando result == 0. Se usa para decidir los saltos:
-//                   - bne: SUB, salta si zero = 0 (rs1 != rs2)
-//                   - bge: SLT, salta si zero = 1 (rs1 >= rs2, pues SLT = 0)
-//
-// Codificaci贸n de alu_ctrl:
-//   000 ADD   a + b            (addi, lw, sw, lui, PC+4, destinos de salto)
-//   001 SUB   a - b            (bne)
-//   010 AND   a & b            (andi)
-//   011 OR    a | b            (reservado, no lo usa el programa de prueba)
-//   100 SLL   a << b[4:0]      (slli)
-//   101 SLT   (a < b) con signo (bge)
-//   110,111    reservado -> result = 0
-//
-// Raz贸n de existir: el enunciado exige implementar la ALU en Verilog y es el
-// 煤nico bloque que calcula; reutilizarla ahorra hardware en el multiciclo.
-//==============================================================================
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// M骴ulo: alu
+// Descripci髇: L骻ica combinacional para la ejecuci髇 de operaciones aritm閠icas
+//              (ADD, SUB), l骻icas (AND), de desplazamiento (SLL) y pasaje directo
+//              (PASS-B). Genera las banderas de condici髇 Zero y GE (comparaci髇
+//              con signo SrcA >= SrcB) para el procesador multiciclo RV32I.
+//////////////////////////////////////////////////////////////////////////////////
+
 module alu (
-    input  wire [31:0] a,
-    input  wire [31:0] b,
-    input  wire [2:0]  alu_ctrl,
-    output reg  [31:0] result,
-    output wire        zero
+    input  wire [31:0] SrcA,
+    input  wire [31:0] SrcB,
+    input  wire [2:0]  ALUControl,
+    output reg  [31:0] ALUResult,
+    output wire        Zero,
+    output wire        GE
 );
 
-    localparam ALU_ADD = 3'b000;
-    localparam ALU_SUB = 3'b001;
-    localparam ALU_AND = 3'b010;
-    localparam ALU_OR  = 3'b011;
-    localparam ALU_SLL = 3'b100;
-    localparam ALU_SLT = 3'b101;
-
     always @(*) begin
-        case (alu_ctrl)
-            ALU_ADD: result = a + b;
-            ALU_SUB: result = a - b;
-            ALU_AND: result = a & b;
-            ALU_OR : result = a | b;
-            ALU_SLL: result = a << b[4:0];
-            ALU_SLT: result = ($signed(a) < $signed(b)) ? 32'd1 : 32'd0;
-            default: result = 32'd0;
+        case (ALUControl)
+            3'b000:  ALUResult = SrcA + SrcB;               // ADD
+            3'b001:  ALUResult = SrcA - SrcB;               // SUB
+            3'b010:  ALUResult = SrcA & SrcB;               // AND
+            3'b011:  ALUResult = SrcA << SrcB[4:0];         // SLL (Shift Left Logical)
+            3'b100:  ALUResult = SrcB;                      // PASS-B (LUI)
+            default: ALUResult = 32'h0000_0000;
         endcase
     end
 
-    assign zero = (result == 32'd0);
+    // Bandera de cero: se activa si el resultado es exactamente cero
+    assign Zero = (ALUResult == 32'd0);
+
+    // Bandera de mayor o igual: comparaci髇 con signo (SrcA >= SrcB)
+    assign GE   = ($signed(SrcA) >= $signed(SrcB));
 
 endmodule

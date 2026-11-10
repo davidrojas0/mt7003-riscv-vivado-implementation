@@ -1,104 +1,51 @@
-`timescale 1ns/1ps
-//==============================================================================
-// MÃ³dulo : memory  (Memoria Ãºnica de instrucciones y datos)
-// Proyecto: Microarquitectura RV32I multiciclo - MT-7003 - Grupo NÂ° 3
-//------------------------------------------------------------------------------
-// Funcionalidad:
-//   RAM de 2^ADDR_BITS palabras de 32 bits compartida entre instrucciones y
-//   datos (como en el diagrama multiciclo v2). Lectura asÃ­ncrona de una palabra
-//   completa; escritura sÃ­ncrona (flanco positivo) de palabra (sw) o de un
-//   solo byte (sb).
-//
-// Entradas:
-//   clk
-//   mem_write         MemWrite: habilita la escritura
-//   byte_write        ByteWrite: 1 = escribe solo write_data[7:0] (sb);
-//                                0 = escribe la palabra completa (sw)
-//   addr       [31:0] direcciÃ³n en bytes
-//   write_data [31:0] dato a escribir (viene del registro B = rs2)
-// Salida:
-//   read_data  [31:0] palabra en la direcciÃ³n addr (los 2 bits bajos se ignoran)
-//
-// ParÃ¡metros:
-//   ADDR_BITS  cantidad de bits de Ã­ndice de palabra (8 -> 256 palabras = 1 KiB)
-//   INIT_FILE  archivo .mem en hexadecimal (una palabra por lÃ­nea). Si es ""
-//              la memoria arranca en cero.
-//
-// Mapa de memoria: solo se usan los bits addr[ADDR_BITS+1:2]; el resto de la
-// direcciÃ³n se ignora (la memoria se "repite"). Por eso la pila que arranca con
-// sp = 0 -> 0xFFFFFFE0 cae en la parte alta de la memoria (0x3E0 con 1 KiB) y
-// el programa en la parte baja, sin necesidad de inicializar sp.
-//
-// Dump de memoria: la tarea dump escribe un archivo con una lÃ­nea por palabra:
-//     <direcciÃ³n en hex> <valor en hex>      p. ej.  0x3e0 0x62000000
-// Si only_nonzero = 1 omite las palabras en cero.
-//
-// RazÃ³n de existir: el enunciado exige memoria de datos/instrucciones y poder
-// volcar su contenido a un archivo para revisarlo.
-//==============================================================================
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Módulo: memory (Memoria Unificada RAM)
+// Descripción: Memoria RAM de puerto único unificada de 32 bits, organizada en
+//              palabras de 32 bits con acceso alineado a byte. Permite lectura
+//              asíncrona y escritura síncrona habilitada por byte (ByteWrite).
+//////////////////////////////////////////////////////////////////////////////////
+
 module memory #(
-    parameter ADDR_BITS = 8,
-    parameter INIT_FILE = "instrucciones_main.mem"
-) (
-    input  wire        clk,
-    input  wire        mem_write,
-    input  wire        byte_write,
-    input  wire [31:0] addr,
-    input  wire [31:0] write_data,
-    output wire [31:0] read_data
+    parameter DEPTH = 256  // Número de palabras de 32 bits (1024 bytes)
+)(
+    input  wire        clk,        // Reloj principal (escrituras en flanco de subida)
+    input  wire [31:0] Address,    // Dirección física de 32 bits
+    input  wire [31:0] WriteData,  // Dato de 32 bits a escribir (desde registro B)
+    input  wire        MemWrite,   // Habilitador global de escritura (1 = Write, 0 = Read)
+    input  wire [3:0]  ByteWrite,  // Habilitadores de carril por byte [3:0]
+    output wire [31:0] ReadData    // Palabra de 32 bits leída
 );
 
-    localparam DEPTH = 1 << ADDR_BITS;
-
-    reg [31:0] mem [0:DEPTH-1];
-    reg [31:0] tmp;
-    integer    i;
-
-    wire [ADDR_BITS-1:0] word_idx = addr[ADDR_BITS+1:2];
-
-    // Lectura asÃ­ncrona
-    assign read_data = mem[word_idx];
-
-    // Contenido inicial: ceros y luego el programa
+    // Arreglo de memoria RAM de DEPTH palabras x 32 bits
+    reg [31:0] ram [0:DEPTH-1];
+    
+    // Carga inicial del archivo de instrucciones en hexadecimal
     initial begin
-        for (i = 0; i < DEPTH; i = i + 1)
-            mem[i] = 32'd0;
-        if (INIT_FILE != "")
-            $readmemh(INIT_FILE, mem);
+        $readmemh("instr_main.mem", ram);
     end
 
-    // Escritura sÃ­ncrona de palabra o de byte
+    // Alineación a nivel de palabra de 32 bits (dirección dividida entre 4)
+    wire [7:0] word_idx = Address[9:2];
+
+    // Lectura Combinacional / Asíncrona
+    assign ReadData = ram[word_idx];
+
+    // Escritura Síncrona con Habilitación Selectiva por Byte
     always @(posedge clk) begin
-        if (mem_write) begin
-            if (byte_write) begin
-                tmp = mem[word_idx];
-                case (addr[1:0])
-                    2'd0: tmp[7:0]   = write_data[7:0];
-                    2'd1: tmp[15:8]  = write_data[7:0];
-                    2'd2: tmp[23:16] = write_data[7:0];
-                    2'd3: tmp[31:24] = write_data[7:0];
-                endcase
-                mem[word_idx] <= tmp;
-            end else begin
-                mem[word_idx] <= write_data;
+        if (MemWrite) begin
+            if (ByteWrite == 4'b1111) begin
+                // sw: Escritura de palabra completa (32 bits directos)
+                ram[word_idx] <= WriteData;
+            end 
+            else begin
+                // sb: Escritura de byte individual (toma WriteData[7:0] para el carril activo)
+                if (ByteWrite[0]) ram[word_idx][7:0]   <= WriteData[7:0];
+                if (ByteWrite[1]) ram[word_idx][15:8]  <= WriteData[7:0];
+                if (ByteWrite[2]) ram[word_idx][23:16] <= WriteData[7:0];
+                if (ByteWrite[3]) ram[word_idx][31:24] <= WriteData[7:0];
             end
         end
     end
-
-    // Volcado de memoria a archivo de texto
-    task dump;
-        input [8*128-1:0] filename;
-        input             only_nonzero;
-        integer fd;
-        integer k;
-        begin
-            fd = $fopen(filename, "w");
-            for (k = 0; k < DEPTH; k = k + 1) begin
-                if (!only_nonzero || mem[k] != 32'd0)
-                    $fdisplay(fd, "0x%0h 0x%08h", k * 4, mem[k]);
-            end
-            $fclose(fd);
-        end
-    endtask
 
 endmodule

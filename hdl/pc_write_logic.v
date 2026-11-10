@@ -1,35 +1,33 @@
-`timescale 1ns/1ps
-//==============================================================================
-// M贸dulo : pc_write_logic  (Control de Escritura del PC)
-// Proyecto: Microarquitectura RV32I multiciclo - MT-7003 - Grupo N掳 3
-//------------------------------------------------------------------------------
-// Funcionalidad:
-//   Genera la se帽al PCWrite que habilita la escritura del registro PC:
-//
-//       PCWrite = PCUpdate  OR  ( Branch AND (Zero XOR BranchInv) )
-//
-//   - PCUpdate : escritura incondicional (Fetch: PC+4, y jal: destino).
-//   - Branch   : la instrucci贸n actual es un salto condicional (estado Branch).
-//   - Zero     : bandera de la ALU (resultado == 0).
-//   - BranchInv: invierte la condici贸n. Permite que una misma bandera Zero
-//                sirva para ambos saltos del programa:
-//        bne -> ALU resta;  salta si Zero = 0  (BranchInv = 1)
-//        bge -> ALU slt;    salta si Zero = 1  (BranchInv = 0)
-//
-// Entradas : pc_update, branch, branch_inv, zero
-// Salida   : pc_write
-//
-// Raz贸n de existir: en el multiciclo el PC se escribe en distintos ciclos y
-// por distintos motivos; este bloque centraliza esa decisi贸n (ver diagrama).
-//==============================================================================
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// M骴ulo: pc_write_logic
+// Descripci髇: L骻ica combinacional que eval鷄 las se馻les de control de la FSM
+//              (PCUpdate, Branch), el campo funct3 de la instrucci髇 y las banderas
+//              de la ALU (Zero, GE) para sintetizar la se馻l global de habilitaci髇
+//              de escritura del Program Counter (PCWrite).
+//////////////////////////////////////////////////////////////////////////////////
+
 module pc_write_logic (
-    input  wire pc_update,
-    input  wire branch,
-    input  wire branch_inv,
-    input  wire zero,
-    output wire pc_write
+    input  wire       PCUpdate,
+    input  wire       Branch,
+    input  wire       Zero,
+    input  wire       GE,
+    input  wire [2:0] funct3,
+    output wire       PCWrite
 );
 
-    assign pc_write = pc_update | (branch & (zero ^ branch_inv));
+    wire is_bne;
+    wire is_bge;
+    wire BranchTaken;
+
+    // Discriminaci髇 de instrucci髇 de salto condicional seg鷑 el campo funct3
+    assign is_bne = (funct3 == 3'b001); // Branch if Not Equal
+    assign is_bge = (funct3 == 3'b101); // Branch if Greater or Equal
+
+    // Evaluaci髇 l骻ica combinacional del cumplimiento del salto
+    assign BranchTaken = Branch & ((is_bne & ~Zero) | (is_bge & GE));
+
+    // Ecuaci髇 l骻ica final para la habilitaci髇 de escritura en el registro PC
+    assign PCWrite = PCUpdate | BranchTaken;
 
 endmodule

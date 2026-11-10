@@ -5,14 +5,14 @@
 **Grupo N° 3** | II Semestre 2026  
 
 ## Descripción del Proyecto
-Implementación de una microarquitectura multiciclo en Verilog para el set reducido de instrucciones de enteros de la arquitectura de código abierto RISC-V (RV32I), validada en el entorno de simulación Vivado de AMD.
+Implementación de una microarquitectura multiciclo ([ver diagrama](docs/circuito_multiciclo_final.png)) en Verilog para el set reducido de instrucciones de enteros de la arquitectura de código abierto RISC-V (RV32I), validada en el entorno de simulación Vivado de AMD.
 
 ---
 
 ## Especificaciones del Procesador y Set de Instrucciones
 
 ### Análisis y Clasificación de Instrucciones RV32I
-A partir del proceso de cross-compilación y desensamblado del código en C suministrado, `pm_ev_grupos_6_estudiantes.c`, se determinó un subconjunto mínimo de 10 instrucciones pertenecientes al ISA RV32I base, repartidas en 31 palabras de instrucción de 32 bits.
+A partir del proceso de cross-compilación y [desensamblado](src/pm_ev_objdump_main.txt) del código en C suministrado, [`pm_ev_grupos_6_estudiantes.c`](src/pm_ev_grupos_6_estudiantes.c), se determinó un subconjunto mínimo de 10 instrucciones pertenecientes al ISA RV32I base, repartidas en 31 palabras de instrucción de 32 bits.
 
 Como se detalla en la tabla a continuación, el subconjunto se clasifica en 5 formatos principales de codificación:
 

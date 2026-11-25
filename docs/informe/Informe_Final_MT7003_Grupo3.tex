@@ -5,6 +5,8 @@
 \usetikzlibrary{arrows.meta,positioning,calc}
 \renewcommand{\tablename}{Tabla}\renewcommand{\figurename}{Fig.}
 \renewcommand{\refname}{Referencias}
+\renewcommand{\IEEEkeywordsname}{Palabras clave}
+\renewcommand{\abstractname}{Resumen}
 \def\tablename{TABLA}
 \newcommand{\cod}[1]{\texttt{\small #1}}
 \hyphenation{multi-ciclo ins-truc-ción ins-truc-cio-nes}
@@ -16,28 +18,28 @@ MT-7003 Microprocesadores y Microcontroladores, Grupo N°\,3, II Semestre 2026}}
 \maketitle
 
 \begin{abstract}
-Este informe describe el diseño y la verificación de un procesador RISC-V RV32I multiciclo escrito en Verilog y simulado en Vivado. El procesador ejecuta diez instrucciones (\cod{addi, lw, slli, andi, sw, sb, lui, bne, bge, jal}), con lo que cubre los cinco formatos de instrucción I, S, B, U y J. Explicamos la ruta de datos de 20 módulos, la unidad de control (una máquina de Moore de 13 estados) y cómo se decodifica cada formato, relacionando cada módulo con la instrucción que lo justifica. Para verificarlo usamos un programa en C compilado a ensamblador: se ejecutan 42 instrucciones en 174 ciclos (CPI de 4,1) y la memoria queda con los valores que predice el código fuente.
+Este informe describe el diseño y la verificación de un procesador RISC-V RV32I multiciclo escrito en Verilog y simulado en Vivado. El procesador ejecuta diez instrucciones (\cod{addi, lw, slli, andi, sw, sb, lui, bne, bge, jal}), con lo que cubre los cinco formatos de instrucción I, S, B, U y J. Se explican la ruta de datos de 20 módulos, la unidad de control (una máquina de Moore de 13 estados) y la decodificación de cada formato, relacionando cada módulo con la instrucción que lo justifica. Para verificarlo se utiliza un programa en C compilado a ensamblador: se ejecutan 42 instrucciones en 174 ciclos (CPI de 4,1) y la memoria queda con los valores que predice el código fuente.
 \end{abstract}
 \begin{IEEEkeywords}
 RISC-V, RV32I, multiciclo, máquina de estados, Verilog, Vivado.
 \end{IEEEkeywords}
 
 \section{Introducción}
-El objetivo del proyecto es construir un microprocesador que ejecute un programa real en C, compilado para RV32I \cite{spec}, y demostrar que funciona mediante simulación. No implementamos el conjunto completo de instrucciones: analizamos el programa de prueba, extrajimos las diez instrucciones que realmente usa y diseñamos el hardware justo para ellas, sin dejar de respetar el formato de cada una.
+El objetivo del proyecto es construir un microprocesador que ejecute un programa real en C, compilado para RV32I \cite{spec}, y demostrar que funciona mediante simulación. No se implementa el conjunto completo de instrucciones: se analizó el programa de prueba, se extrajeron las diez instrucciones que realmente utiliza y se diseñó el hardware necesario para ellas, respetando el formato de cada una.
 
-Elegimos una microarquitectura multiciclo \cite{pat}. En lugar de resolver la instrucción completa en un solo pulso de reloj, la dividimos en varios pasos, de un ciclo cada uno, y así una misma memoria, una misma ALU y un puñado de registros intermedios se reutilizan en cada paso. El módulo superior, \cod{top\_rv32i}, tiene como únicas entradas \cod{clk} y \cod{rst}, como pide el enunciado \cite{enun}, y una salida \cod{halted} que indica que el programa terminó.
+Se eligió una microarquitectura multiciclo \cite{pat}. En lugar de resolver la instrucción completa en un solo pulso de reloj, esta se divide en varios pasos, de un ciclo cada uno, y así una misma memoria, una misma ALU y un puñado de registros intermedios se reutilizan en cada paso. El módulo superior, \cod{top\_rv32i}, tiene como únicas entradas \cod{clk} y \cod{rst}, como pide el enunciado \cite{enun}, y una salida \cod{halted} que indica que el programa terminó.
 
-El resto del documento sigue el orden en que trabajamos. La sección~II cuenta cómo llegamos al diseño final; la III describe el programa de prueba; la IV y la V presentan la ruta de datos y la unidad de control; la VI explica cómo se decodifica cada formato; la VII justifica los módulos; y la VIII muestra la verificación y los resultados. El código, los testbenches, los diagramas y la bitácora están en el repositorio del grupo \cite{repo}.
+El resto del documento sigue el orden en que se realizó el trabajo. La sección~II explica cómo se llegó al diseño final; la III describe el programa de prueba; la IV y la V presentan la ruta de datos y la unidad de control; la VI explica cómo se decodifica cada formato; la VII justifica los módulos; y la VIII muestra la verificación y los resultados. El código, los testbenches, los diagramas y la bitácora están en el repositorio del grupo \cite{repo}.
 
 \section{Proceso de diseño}
-Empezamos con una arquitectura monociclo (Avance 1). Al presentarla, el profesor nos hizo ver que el PC, la memoria, el banco de registros y la RAM dependían todos del flanco de subida, así que la instrucción y sus acciones quedaban desfasadas dentro del mismo pulso. De ahí salió la decisión de pasar a multiciclo, y en la misma reunión adoptamos GitHub para el control de versiones y la bitácora (entradas 3 y 4).
+El diseño inició con una arquitectura monociclo (Avance 1). Al presentarla, el profesor señaló que el PC, la memoria, el banco de registros y la RAM dependían todos del flanco de subida, así que la instrucción y sus acciones quedaban desfasadas dentro del mismo pulso. De ahí salió la decisión de pasar a multiciclo, y en la misma reunión se adoptó GitHub para el control de versiones y la bitácora (entradas 3 y 4).
 
-Después de rediseñar el diagrama, redactamos una especificación detallada en el \cod{README.md}: una sección por módulo con su tabla de puertos y su descripción operativa, la tabla de estados de la FSM y la tabla maestra de señales de control. Esa especificación fue la referencia para escribir el Verilog (entradas 5 a 7).
+Después de rediseñar el diagrama, se redactó una especificación detallada en el \cod{README.md}: una sección por módulo con su tabla de puertos y su descripción operativa, la tabla de estados de la FSM y la tabla maestra de señales de control. Esa especificación fue la referencia para escribir el Verilog (entradas 5 a 7).
 
-La codificación final fue incremental (entrada 8). Para cada módulo escribimos el Verilog, un testbench con su objetivo, estímulos y resultados esperados, y lo simulamos en Vivado antes de pasar al siguiente.
+La codificación final fue incremental (entrada 8). Para cada módulo se escribió el Verilog y un testbench con su objetivo, estímulos y resultados esperados, y se simuló en Vivado antes de pasar al siguiente.
 
 \section{Programa de prueba}
-El programa (Fig.~\ref{fig:c}) lo compilamos con GCC para RV32I y lo recortamos a las instrucciones soportadas. Declara un puntero con el valor \cod{0xC7DF}, un carácter, un entero y un lazo de dos iteraciones: en la primera se cambia el carácter a \texttt{'b'} y en la segunda se desplaza \cod{b} un bit a la izquierda y se enmascara. Cada construcción termina ejercitando uno o más formatos.
+El programa (Fig.~\ref{fig:c}) se compiló con GCC para RV32I y se recortó a las instrucciones soportadas. Declara un puntero con el valor \cod{0xC7DF}, un carácter, un entero y un lazo de dos iteraciones: en la primera se cambia el carácter a \texttt{'b'} y en la segunda se desplaza \cod{b} un bit a la izquierda y se enmascara. Cada construcción termina ejercitando uno o más formatos.
 
 \begin{figure}[H]
 \centering\footnotesize
@@ -52,9 +54,9 @@ El programa (Fig.~\ref{fig:c}) lo compilamos con GCC para RV32I y lo recortamos 
 \caption{Programa en C y las instrucciones RV32I que genera.}\label{fig:c}
 \end{figure}
 
-El programa final ocupa 31 palabras (\cod{0x00}--\cod{0x78}) y se carga con \cod{\$readmemh}; el listado completo está en el Anexo~B. La palabra que sigue no está inicializada (valor \cod{x}): su \cod{opcode} no coincide con ninguna instrucción soportada y la FSM pasa a \cod{HALT}, que usamos como marca de fin.
+El programa final ocupa 31 palabras (\cod{0x00}--\cod{0x78}) y se carga con \cod{\$readmemh}; el listado completo está en el Anexo~B. La palabra que sigue no está inicializada (valor \cod{x}): su \cod{opcode} no coincide con ninguna instrucción soportada y la FSM pasa a \cod{HALT}, que se utiliza como marca de fin.
 
-Las variables viven en la pila. Como \cod{sp} arranca en cero, la primera instrucción (\cod{addi sp,sp,-32}) lo deja en \cod{0xFFFFFFE0}. Nuestra memoria es de 256 palabras y solo usa los bits \cod{Address[9:2]}, de modo que esa dirección cae en la palabra 248 (byte \cod{0x3E0}). El programa queda en la parte baja de la RAM, la pila en la parte alta, y no hace falta inicializar \cod{sp}.
+Las variables viven en la pila. Como \cod{sp} arranca en cero, la primera instrucción (\cod{addi sp,sp,-32}) lo deja en \cod{0xFFFFFFE0}. La memoria es de 256 palabras y solo usa los bits \cod{Address[9:2]}, de modo que esa dirección cae en la palabra 248 (byte \cod{0x3E0}). El programa queda en la parte baja de la RAM, la pila en la parte alta, y no hace falta inicializar \cod{sp}.
 
 \section{Arquitectura general}
 La Fig.~\ref{fig:dp} (Anexo A) muestra el diagrama final y la Tabla~\ref{tab:mod} lista los módulos. Para entenderla conviene seguir un dato a lo largo del circuito. El \cod{PC} da la dirección a la memoria, que entrega una palabra de instrucción al registro \cod{Instrucciones}. De ahí salen los campos \cod{rs1}, \cod{rs2} y \cod{rd} hacia el banco de registros, el bloque \cod{imm\_extend} arma el inmediato, y el \cod{opcode} va a la FSM. Los operandos pasan por los registros \cod{A} y \cod{B} hasta la ALU, cuyo resultado se guarda en \cod{ALUOut}. Finalmente el multiplexor \cod{ResultSrc} decide si lo que se escribe (en el banco de registros o en el \cod{PC}) es \cod{ALUOut}, el dato leído de memoria o la salida directa de la ALU.
@@ -104,7 +106,7 @@ La ALU realiza las operaciones de la Tabla~\ref{tab:alu} y entrega dos banderas:
 \end{tabular}
 \end{table}
 
-Los registros \cod{A}, \cod{B}, \cod{ALUOut} y \cod{Datos} se recargan en cada flanco de reloj y no tienen habilitación. Lo hicimos así a propósito: la FSM siempre consume cada valor en el ciclo inmediatamente siguiente a su captura, así que una habilitación solo añadiría señales de control sin cambiar el resultado. Solo \cod{PC} e \cod{Instrucciones} la necesitan, porque deben conservar su valor durante varios ciclos.
+Los registros \cod{A}, \cod{B}, \cod{ALUOut} y \cod{Datos} se recargan en cada flanco de reloj y no tienen habilitación. Esto es intencional: la FSM siempre consume cada valor en el ciclo inmediatamente siguiente a su captura, así que una habilitación solo añadiría señales de control sin cambiar el resultado. Solo \cod{PC} e \cod{Instrucciones} la necesitan, porque deben conservar su valor durante varios ciclos.
 
 \section{Unidad de control}
 \subsection{La máquina de estados}
@@ -159,7 +161,7 @@ La unidad de control (\cod{control\_fsm}) es una máquina de Moore: las salidas 
 \end{figure*}
 
 \subsection{Qué pasa en cada ciclo}
-Los dos primeros ciclos son iguales para todas las instrucciones. En \cod{FETCH} se lee \cod{Mem[PC]} hacia \cod{Instrucciones}, y al mismo tiempo la ALU calcula \cod{PC+4} y lo escribe en el \cod{PC} usando la salida directa (\cod{ResultSrc}=10), sin pasar por \cod{ALUOut}. En \cod{DECODE} se leen \cod{rs1} y \cod{rs2} hacia \cod{A} y \cod{B}; como la ALU está libre, aprovechamos para calcular \cod{OldPC+ImmExt} y dejarlo en \cod{ALUOut}. Ese valor es el destino de \cod{bne}, \cod{bge} y \cod{jal}; en las demás instrucciones simplemente se descarta. A partir de ahí cada instrucción sigue su camino (Tabla~\ref{tab:fsm}), y la duración resultante aparece en la Tabla~\ref{tab:cpi}.
+Los dos primeros ciclos son iguales para todas las instrucciones. En \cod{FETCH} se lee \cod{Mem[PC]} hacia \cod{Instrucciones}, y al mismo tiempo la ALU calcula \cod{PC+4} y lo escribe en el \cod{PC} usando la salida directa (\cod{ResultSrc}=10), sin pasar por \cod{ALUOut}. En \cod{DECODE} se leen \cod{rs1} y \cod{rs2} hacia \cod{A} y \cod{B}; como la ALU está libre, se aprovecha para calcular \cod{OldPC+ImmExt} y dejarlo en \cod{ALUOut}. Ese valor es el destino de \cod{bne}, \cod{bge} y \cod{jal}; en las demás instrucciones simplemente se descarta. A partir de ahí cada instrucción sigue su camino (Tabla~\ref{tab:fsm}), y la duración resultante aparece en la Tabla~\ref{tab:cpi}.
 
 Como ejemplo, la Tabla~\ref{tab:lw} sigue \cod{lw a5,-24(s0)} (\cod{0xFE842783}, en \cod{0x34}) durante sus cinco ciclos, en la primera pasada del lazo, cuando \cod{s0}=0 y \cod{i}=0.
 
@@ -244,13 +246,13 @@ El destino del salto ya está en \cod{ALUOut} desde \cod{DECODE}, por lo que \co
 \end{equation}
 Si la condición se cumple, el \cod{PC} carga \cod{ALUOut}; si no, conserva el \cod{PC+4} que escribió \cod{FETCH}. Por eso estas instrucciones tardan solo 3 ciclos.
 
-Tomemos \cod{bge a5,a4,-64} (\cod{0xFCE7D0E3}, en \cod{0x74}), la que cierra el lazo. Antes se ejecutó \cod{addi a5,x0,1}, así que \cod{a5}=1. En \cod{DECODE}, \cod{ALUOut}=\cod{0x74}$-$64=\cod{0x34}. Si $a5\ge a4$ (con signo), \cod{GE}=1 y el \cod{PC} salta a \cod{0x34}, el inicio del lazo; si no, el programa continúa en \cod{0x78}. Con \cod{i}=0 y \cod{i}=1 salta, con \cod{i}=2 sale. Necesitamos la bandera \cod{GE} porque la comparación con signo no se puede deducir de \cod{Zero}.
+Un ejemplo es \cod{bge a5,a4,-64} (\cod{0xFCE7D0E3}, en \cod{0x74}), la que cierra el lazo. Antes se ejecutó \cod{addi a5,x0,1}, así que \cod{a5}=1. En \cod{DECODE}, \cod{ALUOut}=\cod{0x74}$-$64=\cod{0x34}. Si $a5\ge a4$ (con signo), \cod{GE}=1 y el \cod{PC} salta a \cod{0x34}, el inicio del lazo; si no, el programa continúa en \cod{0x78}. Con \cod{i}=0 y \cod{i}=1 salta, con \cod{i}=2 sale. La bandera \cod{GE} es necesaria porque la comparación con signo no se puede deducir de \cod{Zero}.
 
 \subsection{Tipo U: \cod{lui}}
-\cod{lui} coloca un inmediato de 20 bits en la parte alta del registro. En vez de añadir un camino especial, dejamos pasar el inmediato por la ALU con una operación PASS-B (\cod{ALUOp}=11): en \cod{EXEC\_LUI} el resultado es \cod{ImmExt}, y \cod{ALUWB} lo escribe en \cod{rd}. El programa usa \cod{lui a5,0xC} seguido de \cod{addi a5,a5,2015} para armar \cod{0xC7DF}, que es lo que se guarda en la variable \cod{r}.
+\cod{lui} coloca un inmediato de 20 bits en la parte alta del registro. En vez de añadir un camino especial, el inmediato pasa por la ALU con una operación PASS-B (\cod{ALUOp}=11): en \cod{EXEC\_LUI} el resultado es \cod{ImmExt}, y \cod{ALUWB} lo escribe en \cod{rd}. El programa usa \cod{lui a5,0xC} seguido de \cod{addi a5,a5,2015} para armar \cod{0xC7DF}, que es lo que se guarda en la variable \cod{r}.
 
 \subsection{Tipo J: \cod{jal}}
-El inmediato de 21 bits se reconstruye con el bit 0 en cero. \cod{jal} tiene que hacer dos cosas, cambiar el \cod{PC} y guardar la dirección de retorno en \cod{rd}, pero solo disponemos de un multiplexor \cod{Result} que alimenta ambos destinos. Por eso lo dividimos en dos estados: \cod{JAL1} carga el \cod{PC} con el destino ya calculado en \cod{ALUOut} (\cod{PCUpdate}=1, \cod{ResultSrc}=00) y \cod{JAL2} calcula \cod{OldPC+4} y lo escribe en \cod{rd} (\cod{ALUSrcA}=01, \cod{ALUSrcB}=10, \cod{ResultSrc}=10). En ambos estados se usa el mismo multiplexor; lo único que cambia es el destino. El programa usa \cod{jal} con \cod{rd}=\cod{x0}, es decir, como un salto simple. Por ejemplo, \cod{0x03C0006F} en \cod{0x30} salta al destino \cod{0x6C}.
+El inmediato de 21 bits se reconstruye con el bit 0 en cero. \cod{jal} tiene que hacer dos cosas, cambiar el \cod{PC} y guardar la dirección de retorno en \cod{rd}, pero solo hay un multiplexor \cod{Result} que alimenta ambos destinos. Por eso se divide en dos estados: \cod{JAL1} carga el \cod{PC} con el destino ya calculado en \cod{ALUOut} (\cod{PCUpdate}=1, \cod{ResultSrc}=00) y \cod{JAL2} calcula \cod{OldPC+4} y lo escribe en \cod{rd} (\cod{ALUSrcA}=01, \cod{ALUSrcB}=10, \cod{ResultSrc}=10). En ambos estados se usa el mismo multiplexor; lo único que cambia es el destino. El programa usa \cod{jal} con \cod{rd}=\cod{x0}, es decir, como un salto simple. Por ejemplo, \cod{0x03C0006F} en \cod{0x30} salta al destino \cod{0x6C}.
 
 \section{Justificación de módulos}
 Cada módulo del diseño está ahí por una instrucción concreta. Los que más conviene recordar son:
@@ -268,7 +270,7 @@ Cada módulo del diseño está ahí por una instrucción concreta. Los que más 
 
 \section{Verificación y resultados}
 \subsection{Pruebas por módulo}
-Cada módulo tiene su testbench en \cod{sim/}, y en el encabezado de cada uno documentamos el objetivo, los estímulos en el tiempo y los resultados esperados, como pide el enunciado. La Tabla~\ref{tab:tb} resume qué se comprueba en los más importantes. Los demás (multiplexores y registros) verifican que cada selector entregue la entrada correcta y que cada registro capture, retenga y se reinicie como corresponde.
+Cada módulo tiene su testbench en \cod{sim/}, y el encabezado de cada uno documenta el objetivo, los estímulos en el tiempo y los resultados esperados. La Tabla~\ref{tab:tb} resume qué se comprueba en los más importantes. Los demás (multiplexores y registros) verifican que cada selector entregue la entrada correcta y que cada registro capture, retenga y se reinicie como corresponde.
 
 \begin{table}[t]
 \caption{Pruebas de los módulos principales}\label{tab:tb}
@@ -315,17 +317,17 @@ Los valores de \cod{i} y \cod{b} confirman que \cod{lw}, \cod{addi}, \cod{slli},
 El precio de esta arquitectura es el CPI de 4,1: cada instrucción tarda entre 3 y 5 ciclos y el procesador nunca hace dos cosas a la vez. A cambio, el hardware es pequeño. Tiene una sola ALU, una sola memoria y un solo puerto de escritura al banco de registros, y la unidad de control cabe en 13 estados.
 
 \section{Conclusiones}
-Logramos un procesador RV32I multiciclo que ejecuta completo el programa de prueba, con los cinco formatos de instrucción (I, S, B, U y J), y que deja la memoria exactamente en el estado que predice el código en C: \cod{r}=\cod{0xC7DF}, \cod{i}=2, \cod{b}=2 y el carácter \texttt{'b'} en el byte 3 de \cod{0x3E0}. El módulo superior cumple lo que pide el enunciado: solo recibe \cod{clk} y \cod{rst}, y las 42 instrucciones se resuelven en 174 ciclos hasta que la FSM llega a \cod{HALT}.
+Se logró un procesador RV32I multiciclo que ejecuta completo el programa de prueba, con los cinco formatos de instrucción (I, S, B, U y J), y que deja la memoria exactamente en el estado que predice el código en C: \cod{r}=\cod{0xC7DF}, \cod{i}=2, \cod{b}=2 y el carácter \texttt{'b'} en el byte 3 de \cod{0x3E0}. El módulo superior cumple lo que pide el enunciado: solo recibe \cod{clk} y \cod{rst}, y las 42 instrucciones se resuelven en 174 ciclos hasta que la FSM llega a \cod{HALT}.
 
 En cuanto al diseño, tres decisiones explican la mayor parte del resultado. La primera es separar una FSM mínima, que solo mira el \cod{opcode}, de decodificadores combinacionales para \cod{funct3}, el formato del inmediato y la máscara de bytes: así bastaron 13 estados en lugar de uno por cada variante de instrucción. La segunda es reutilizar la ALU en todos los ciclos (\cod{PC+4}, destino de salto, dirección efectiva y el paso de \cod{lui}), lo que evitó sumadores adicionales y mantuvo la ruta de datos con una sola unidad aritmética. La tercera es calcular el destino de los saltos durante \cod{DECODE}, de modo que \cod{bne} y \cod{bge} necesitan solo tres ciclos y \cod{jal} se resuelve con dos estados que comparten el mismo multiplexor de resultado.
 
 Estas decisiones tienen un costo medible: un CPI de 4,1, con instrucciones de 3 a 5 ciclos. Es el precio de usar una sola memoria, una sola ALU y un solo puerto de escritura, a cambio de un circuito pequeño y fácil de verificar módulo por módulo, que fue justamente lo que permitió llegar a la integración con confianza en cada pieza.
 
-Además de los resultados, el proyecto nos permitió ver cómo cada decisión de la microarquitectura se refleja en una instrucción concreta: el registro \cod{OldPC} existe por los saltos, la bandera \cod{GE} por \cod{bge}, la operación PASS-B por \cod{lui} y la máscara \cod{ByteWrite} por \cod{sb}. La bitácora y el repositorio dejan constancia de ese proceso de diseño y de las decisiones del grupo.
+Además de los resultados, el proyecto permitió ver cómo cada decisión de la microarquitectura se refleja en una instrucción concreta: el registro \cod{OldPC} existe por los saltos, la bandera \cod{GE} por \cod{bge}, la operación PASS-B por \cod{lui} y la máscara \cod{ByteWrite} por \cod{sb}. La bitácora y el repositorio dejan constancia de ese proceso de diseño y de las decisiones del grupo.
 
 \begin{thebibliography}{1}
-\bibitem{spec} A.~Waterman and K.~Asanović, \emph{The RISC-V Instruction Set Manual, Vol.~I: Unprivileged ISA}, RISC-V International.
-\bibitem{pat} D.~Patterson and A.~Waterman, \emph{The RISC-V Reader: An Open Architecture Atlas}, Strawberry Canyon, 2017.
+\bibitem{spec} A.~Waterman y K.~Asanović, \emph{The RISC-V Instruction Set Manual, Vol.~I: Unprivileged ISA}, RISC-V International.
+\bibitem{pat} D.~Patterson y A.~Waterman, \emph{The RISC-V Reader: An Open Architecture Atlas}, Strawberry Canyon, 2017.
 \bibitem{enun} C.~Salazar García, \emph{Proyecto: Microprocesador RV32I}, MT-7003, Tecnológico de Costa Rica, II Sem. 2026.
 \bibitem{repo} Grupo N°\,3, ``mt7003-riscv-vivado-implementation,'' repositorio \texttt{davidrojas0/mt7003-riscv-vivado-implementation}, rama \texttt{main}.
 \end{thebibliography}

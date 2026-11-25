@@ -2,7 +2,7 @@
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{float,amsmath,booktabs,array,graphicx,tikz,microtype,cite}
-\usetikzlibrary{arrows.meta,positioning}
+\usetikzlibrary{arrows.meta,positioning,calc}
 \renewcommand{\tablename}{Tabla}\renewcommand{\figurename}{Fig.}
 \renewcommand{\refname}{Referencias}
 \def\tablename{TABLA}
@@ -112,44 +112,49 @@ La unidad de control (\cod{control\_fsm}) es una máquina de Moore: las salidas 
 
 \begin{figure*}[t]
 \centering
+\resizebox{0.97\textwidth}{!}{%
 \begin{tikzpicture}[>=Stealth,x=1cm,y=1cm,
  st/.style={draw,rounded corners=2pt,minimum width=20mm,minimum height=6.5mm,font=\footnotesize\ttfamily,inner sep=2pt,fill=gray!8},
- lb/.style={font=\scriptsize,inner sep=1.5pt,fill=white},
- rt/.style={font=\scriptsize\itshape,inner sep=1pt}]
+ lb/.style={font=\scriptsize\ttfamily,inner sep=1pt,anchor=south west},
+ rt/.style={font=\scriptsize\itshape,inner sep=1pt,anchor=west}]
+\def\tx{5.0}
 \node[st] (F) at (0,0) {FETCH};
-\node[st] (D) at (3.2,0) {DECODE};
-\node[st] (EI) at (7.4,2.2) {EXEC\_I};
-\node[st] (EL) at (7.4,1.0) {EXEC\_LUI};
-\node[st] (AW) at (11,1.6) {ALUWB};
-\node[st] (MA) at (7.4,-0.6) {MEMADR};
-\node[st] (MR) at (11,-0.6) {MEMREAD};
-\node[st] (MW) at (14.6,-0.6) {MEMWB};
-\node[st] (MS) at (11,-1.8) {MEMWRITE};
-\node[st] (BR) at (7.4,-3.0) {BRANCH};
-\node[st] (J1) at (7.4,-4.2) {JAL1};
-\node[st] (J2) at (11,-4.2) {JAL2};
-\node[st] (H) at (3.2,-2.4) {HALT};
-\draw[->] (-1.6,0)--(F) node[pos=0,left,font=\scriptsize]{reset};
+\node[st] (D) at (3.0,0) {DECODE};
+\node[st] (EI) at (8.8,2.5) {EXEC\_I};
+\node[st] (EL) at (8.8,1.3) {EXEC\_LUI};
+\node[st] (AW) at (12.4,1.9) {ALUWB};
+\node[st] (MA) at (8.8,0) {MEMADR};
+\node[st] (MR) at (12.4,0) {MEMREAD};
+\node[st] (MW) at (15.6,0) {MEMWB};
+\node[st] (MS) at (12.4,-1.2) {MEMWRITE};
+\node[st] (BR) at (8.8,-2.4) {BRANCH};
+\node[st] (J1) at (8.8,-3.6) {JAL1};
+\node[st] (J2) at (12.4,-3.6) {JAL2};
+\node[st] (H) at (3.0,-2.4) {HALT};
+% flechas principales
+\draw[->] (-1.4,0)--(F) node[pos=0.35,above,font=\scriptsize]{reset};
 \draw[->] (F)--(D);
-\draw[->] (D.east)--++(.9,0)|-(EI.west) node[lb,pos=.62,above]{\cod{addi,slli,andi}};
-\draw[->] (D.east)--++(.9,0)|-(EL.west) node[lb,pos=.62,above]{\cod{lui}};
-\draw[->] (D.east)--++(.9,0)|-(MA.west) node[lb,pos=.62,above]{\cod{lw,sw,sb}};
-\draw[->] (D.east)--++(.9,0)|-(BR.west) node[lb,pos=.62,above]{\cod{bne,bge}};
-\draw[->] (D.east)--++(.9,0)|-(J1.west) node[lb,pos=.62,above]{\cod{jal}};
-\draw[->] (D.south)--(H.north) node[lb,midway,right]{otro};
+\draw (D.east)--(\tx,0);
+\draw (\tx,2.5)--(\tx,-3.6);
+\foreach \y/\n/\t in {2.5/EI/{addi, slli, andi},1.3/EL/{lui},0/MA/{lw, sw, sb},-2.4/BR/{bne, bge},-3.6/J1/{jal}}{
+  \draw[->] (\tx,\y)--(\n.west);
+  \node[lb] at (\tx+0.1,\y+0.03) {\t};
+}
+\draw[->] (D.south)--(H.north) node[font=\scriptsize,midway,right]{otro};
+\node[rt,anchor=north] at (H.south) {permanece en HALT};
 \draw[->] (EI.east)-|(AW.north);
 \draw[->] (EL.east)-|(AW.south);
-\draw[->] (MA.east)--(MR.west) node[lb,midway,above]{\cod{lw}};
+\draw[->] (MA.east)--(MR.west) node[font=\scriptsize\ttfamily,midway,above,xshift=-2mm]{lw};
 \draw[->] (MR.east)--(MW.west);
-\draw[->] (MA.east)--++(.8,0)|-(MS.west) node[lb,pos=.8,below]{\cod{sw,sb}};
+\draw[->] (10.4,0)--(10.4,-1.2)--(MS.west);
+\node[font=\scriptsize\ttfamily,anchor=east] at (10.3,-0.7) {sw, sb};
 \draw[->] (J1.east)--(J2.west);
-\node[rt,right=1mm of AW] {$\to$ FETCH};
-\node[rt,above=1mm of MW] {$\to$ FETCH};
-\node[rt,right=1mm of MS] {$\to$ FETCH};
-\node[rt,right=1mm of BR] {$\to$ FETCH};
-\node[rt,right=1mm of J2] {$\to$ FETCH};
-\node[rt,below=1mm of H] {permanece en HALT};
-\end{tikzpicture}
+\node[rt] at ($(AW.east)+(1mm,0)$) {$\to$ FETCH};
+\node[rt] at ($(MW.south)+(-5mm,-3mm)$) {$\to$ FETCH};
+\node[rt] at ($(MS.east)+(1mm,0)$) {$\to$ FETCH};
+\node[rt] at ($(BR.east)+(1mm,0)$) {$\to$ FETCH};
+\node[rt] at ($(J2.east)+(1mm,0)$) {$\to$ FETCH};
+\end{tikzpicture}}
 \caption{Diagrama de estados de la FSM. Los estados que terminan una instrucción regresan a \cod{FETCH}.}\label{fig:fsm}
 \end{figure*}
 
@@ -310,9 +315,13 @@ Los valores de \cod{i} y \cod{b} confirman que \cod{lw}, \cod{addi}, \cod{slli},
 El precio de esta arquitectura es el CPI de 4,1: cada instrucción tarda entre 3 y 5 ciclos y el procesador nunca hace dos cosas a la vez. A cambio, el hardware es pequeño. Tiene una sola ALU, una sola memoria y un solo puerto de escritura al banco de registros, y la unidad de control cabe en 13 estados.
 
 \section{Conclusiones}
-Logramos un procesador RV32I multiciclo que ejecuta el programa de prueba completo, con los cinco formatos de instrucción, y que deja la memoria en el estado que predice el código en C. Separar una FSM mínima, basada solo en el \cod{opcode}, de decodificadores combinacionales mantuvo la unidad de control en 13 estados y facilitó verificar cada parte por aparte. Reutilizar la ALU en cada ciclo (\cod{PC+4}, destino de salto, dirección efectiva y \cod{lui}) ahorró sumadores, a costa de un CPI de 4,1.
+Logramos un procesador RV32I multiciclo que ejecuta completo el programa de prueba, con los cinco formatos de instrucción (I, S, B, U y J), y que deja la memoria exactamente en el estado que predice el código en C: \cod{r}=\cod{0xC7DF}, \cod{i}=2, \cod{b}=2 y el carácter \texttt{'b'} en el byte 3 de \cod{0x3E0}. El módulo superior cumple lo que pide el enunciado: solo recibe \cod{clk} y \cod{rst}, y las 42 instrucciones se resuelven en 174 ciclos hasta que la FSM llega a \cod{HALT}.
 
+En cuanto al diseño, tres decisiones explican la mayor parte del resultado. La primera es separar una FSM mínima, que solo mira el \cod{opcode}, de decodificadores combinacionales para \cod{funct3}, el formato del inmediato y la máscara de bytes: así bastaron 13 estados en lugar de uno por cada variante de instrucción. La segunda es reutilizar la ALU en todos los ciclos (\cod{PC+4}, destino de salto, dirección efectiva y el paso de \cod{lui}), lo que evitó sumadores adicionales y mantuvo la ruta de datos con una sola unidad aritmética. La tercera es calcular el destino de los saltos durante \cod{DECODE}, de modo que \cod{bne} y \cod{bge} necesitan solo tres ciclos y \cod{jal} se resuelve con dos estados que comparten el mismo multiplexor de resultado.
 
+Estas decisiones tienen un costo medible: un CPI de 4,1, con instrucciones de 3 a 5 ciclos. Es el precio de usar una sola memoria, una sola ALU y un solo puerto de escritura, a cambio de un circuito pequeño y fácil de verificar módulo por módulo, que fue justamente lo que permitió llegar a la integración con confianza en cada pieza.
+
+Además de los resultados, el proyecto nos permitió ver cómo cada decisión de la microarquitectura se refleja en una instrucción concreta: el registro \cod{OldPC} existe por los saltos, la bandera \cod{GE} por \cod{bge}, la operación PASS-B por \cod{lui} y la máscara \cod{ByteWrite} por \cod{sb}. La bitácora y el repositorio dejan constancia de ese proceso de diseño y de las decisiones del grupo.
 
 \begin{thebibliography}{1}
 \bibitem{spec} A.~Waterman and K.~Asanović, \emph{The RISC-V Instruction Set Manual, Vol.~I: Unprivileged ISA}, RISC-V International.
